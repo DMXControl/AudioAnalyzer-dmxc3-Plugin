@@ -1,0 +1,103 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net48</TargetFramework>
+		<OutputType>Library</OutputType>
+		<RootNamespace>AudioAnalyzer</RootNamespace>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
+	</PropertyGroup>
+	<PropertyGroup>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
+	<PropertyGroup>
+		<RuntimeIdentifiers>win</RuntimeIdentifiers>
+	</PropertyGroup>
+	<PropertyGroup>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="LumosGUI">
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosGUI\bin\Debug')">..\..\Lumos\3.3\LumosGUI\bin\Debug\LumosGUI.exe</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosGUI\bin\Debug')">..\..\Lumos\LumosGUI\bin\Debug\LumosGUI.exe</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosGUI.exe</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="LumosControls">
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosControls\bin\Debug')">..\..\Lumos\3.3\LumosControls\bin\Release\LumosControls.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosControls\bin\Debug')">..\..\Lumos\LumosControls\bin\Debug\LumosControls.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosControls.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="LumosProtobuf">
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosProtobuf\bin\Debug\netstandard2.0')">..\..\Lumos\3.3\LumosProtobuf\bin\Debug\netstandard2.0\LumosProtobuf.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosProtobuf\bin\Debug\netstandard2.0')">..\..\Lumos\LumosProtobuf\bin\Debug\netstandard2.0\LumosProtobuf.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosProtobuf.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="LumosLIB">
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosLIB\bin\Debug\netstandard2.0')">..\..\Lumos\3.3\LumosLIB\bin\Debug\netstandard2.0\LumosLIB.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosLIB\bin\Debug\netstandard2.0')">..\..\Lumos\LumosLIB\bin\Debug\netstandard2.0\LumosLIB.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosLIB.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="LumosToolsLIB">
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosToolsLIB\bin\Debug\netstandard2.0')">..\..\Lumos\3.3\LumosToolsLIB\bin\Debug\netstandard2.0\LumosToolsLIB.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosToolsLIB\bin\Debug\netstandard2.0')">..\..\Lumos\LumosToolsLIB\bin\Debug\netstandard2.0\LumosToolsLIB.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosToolsLIB.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="Bass.Net">
+			<HintPath Condition="Exists('..\..\Lumos\3.3\Dependencies')">..\..\Lumos\3.3\Dependencies\Bass\Bass.Net.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\Dependencies')">..\..\Lumos\Dependencies\Bass\Bass.Net.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\Bass\Bass.Net.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+	<ItemGroup>
+		<Content Include="Resources\music2.ico" />
+		<Content Include="Resources\music_red.png" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="Resources\media_play.png" />
+		<None Include="Resources\media_stop.png" />
+		<None Include="Resources\media_eject.png" />
+		<None Include="Resources\media_step_forward.png" />
+		<None Include="Resources\media_end.png" />
+		<None Include="Resources\refresh.png" />
+		<None Include="Resources\step.png" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="DockPanelSuite" Version="3.1.0" />
+		<PackageReference Include="log4net" Version="2.0.15" />
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Update="Properties\Resources.Designer.cs">
+			<DesignTime>True</DesignTime>
+			<AutoGen>True</AutoGen>
+			<DependentUpon>Resources.resx</DependentUpon>
+		</Compile>
+	</ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Update="Properties\Resources.resx">
+			<Generator>ResXFileCodeGenerator</Generator>
+			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
+		</EmbeddedResource>
+	</ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Update="AudioAnalyze.resx">
+			<DependentUpon>AudioAnalyze.cs</DependentUpon>
+			<SubType>Designer</SubType>
+		</EmbeddedResource>
+	</ItemGroup>
+	<PropertyGroup>
+		<PostBuildEvent>FOR /F "skip=2 tokens=2,*" %%A IN ('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Lumos.exe" /v ""') DO set "DMXCRF=%%B" 
+rem copy the plugin to build\Plugins
+xcopy "$(TargetDir)AudioAnalyzer-Plugin.*" "%DMXCRF%\GUI\Plugins\AudioAnalyzer\" /C /F /R /Y /I
+
+rem copy the dependencies to build\dep
+xcopy "$(TargetDir)..\..\..\..\..\Lumos\Dependencies\Bass\bass.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I
+xcopy "$(TargetDir)..\..\..\..\..\Lumos\Dependencies\Bass\Bass.Net.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I
+rem xcopy "$(TargetDir)..\..\..\..\..\Lumos\Dependencies\Bass\x32\bassasio\bassasio.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I</PostBuildEvent>
+		<RunPostBuildEvent>Always</RunPostBuildEvent>
+	</PropertyGroup>
+</Project>
