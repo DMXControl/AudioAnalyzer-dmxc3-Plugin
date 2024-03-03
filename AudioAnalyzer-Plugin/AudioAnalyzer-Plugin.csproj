@@ -50,8 +50,14 @@
 		<Reference Include="Bass.Net">
 			<HintPath Condition="Exists('..\..\Lumos\3.3\Dependencies')">..\..\Lumos\3.3\Dependencies\Bass\Bass.Net.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\Dependencies')">..\..\Lumos\Dependencies\Bass\Bass.Net.dll</HintPath>
-			<HintPath Condition="Exists('..\dep')">..\dep\Bass\Bass.Net.dll</HintPath>
+			<HintPath Condition="Exists('..\libs')">..\libs\Bass.Net.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\Bass.Net.dll</HintPath>
 		</Reference>
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="..\libs\bass.dll">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\music2.ico" />
