@@ -8,12 +8,10 @@ using System.Text;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
-using Un4seen.Bass;
-//using Un4seen.BassAsio;
-//using Un4seen.Bass.Misc;
-//using Un4seen.Bass.AddOn.Tags;
 using LumosLIB.GUI.Windows;
 using Lumos.GUI.BaseWindow;
+using NAudio.CoreAudioApi;
+using NAudio.Wave;
 
 
 namespace AudioAnalyzer
@@ -160,25 +158,27 @@ namespace AudioAnalyzer
         /// </summary>
 		private void audioAnalysForm_Load(object sender, EventArgs e)
 		{
-			//BassNet.Registration("frank.brueggemann@dmxcontrol.de", "8b920c1de2");
-
             // create a high performance timer for measuring
             beatClock = new Stopwatch();
 
 			// create a timer for beat-detection
-			beatTimer = new BASSTimer(beatInterval);
-			beatTimer.Tick += new EventHandler(beatTimer_Tick);
+			beatTimer = new Timer();
+            beatTimer.Interval = beatInterval;
+            beatTimer.Tick += new EventHandler(beatTimer_Tick);
 
 			// create a timer for BPM
-			beatclearTimer = new BASSTimer((int)(60000 / MaxBPM));
-			beatclearTimer.Tick += new EventHandler(beatclearTimer_Tick);
+			beatclearTimer = new Timer();
+            beatclearTimer.Interval = (int)(60000 / MaxBPM);
+            beatclearTimer.Tick += new EventHandler(beatclearTimer_Tick);
 
 			// create a timer for turning off Beat-PictureBox
-			beatclearTimer2 = new BASSTimer(60);
+			beatclearTimer2 = new Timer();
+            beatclearTimer2.Interval = 60;
 			beatclearTimer2.Tick += new EventHandler(beatclearTimer2_Tick);
 
 			// create a timer for suppressing the first second
-			startTimer = new BASSTimer(1000);
+			startTimer = new Timer();
+            startTimer.Interval = 1000;
 			startTimer.Tick += new EventHandler(startTimer_Tick);
 
             // create a timer for suppressing the first second
@@ -186,19 +186,23 @@ namespace AudioAnalyzer
             //infoTimer.Tick += new EventHandler(infoTimer_Tick);
 
             // create a timer for suppressing the first second
-            addBeatTimer = new BASSTimer(1000);
+            addBeatTimer = new Timer();
+            addBeatTimer.Interval = 1000;
             addBeatTimer.Tick += new EventHandler(addBeatTimer_Tick);
 
             // create a timer for main Beat Generator
-            mainBeatTimer = new BASSTimer(4000);
+            mainBeatTimer = new Timer();
+            mainBeatTimer.Interval = 4000;
             mainBeatTimer.Tick += new EventHandler(mainBeatTimer_Tick);
 
             // create a timer for main Beat Generator
-            subBeatTimer = new BASSTimer(4000);
+            subBeatTimer = new Timer();
+            subBeatTimer.Interval = 4000;
             subBeatTimer.Tick += new EventHandler(subBeatTimer_Tick);
 
             // create a timer for tap button timeout
-            tapTimeout = new BASSTimer(4000);
+            tapTimeout = new Timer();
+            tapTimeout.Interval = 4000;
             tapTimeout.Tick += new EventHandler(tapTimeout_Tick);
 
             // create a stopwatch for tapButton
@@ -246,67 +250,30 @@ namespace AudioAnalyzer
 			maxBPMBar.Value = (int)MaxBPM;
 			newBPM();
 
-			Bass.BASS_StreamFree(audioStream);
+            _aggregatorLeft = new LumosLIB.Tools.FastFourierTransform.SampleAggregator();
+            _aggregatorLeft.NotificationCount = 1024;
+            _aggregatorLeft.MaximumCalculated += AggregatorLeft_MaximumCalculated;
+            _aggregatorRight = new LumosLIB.Tools.FastFourierTransform.SampleAggregator();
+            _aggregatorRight.NotificationCount = 1024;
+            _aggregatorRight.MaximumCalculated += AggregatorRight_MaximumCalculated;
+            _fftBuffer = new FFTCircularBuffer(fftLength);
 
-			// recordproc zeigt auf eine leere Funktion
-			myRecord = new RECORDPROC(myRecording);
-			//myAsioRecord = new ASIOPROC(myAsioRecording);
+            MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
+            foreach (MMDevice wasapi in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) {
+                devicesBox.Items.Add(new WasapiSoundSource(wasapi));
+            }
+            if (AsioOut.isSupported()) {
+                foreach (string asio in AsioOut.GetDriverNames()) {
+                    devicesBox.Items.Add(new AsioSoundSource(asio));
+                }
+            }
 
-			//// zeigt alle ASIO-Soundkarten an
-			//ainfo = new BASS_ASIO_INFO();
-			//adinfo = new BASS_ASIO_DEVICEINFO();
-			//for (int n = 0; n < BassAsio.BASS_ASIO_GetDeviceCount(); n++)
-			//{
-			//	adinfo = BassAsio.BASS_ASIO_GetDeviceInfo(n);
-   //             if (adinfo == null)
-   //                 continue;
-
-			//	Console.WriteLine("ASIO Device: " + adinfo.name);
-
-			//	BassAsio.BASS_ASIO_SetDevice(n);
-			//	BassAsio.BASS_ASIO_Init(n, BASSASIOInit.BASS_ASIO_DEFAULT);
-			//    try
-			//    {
-   //                 ainfo = BassAsio.BASS_ASIO_GetInfo();
-   //                 if (ainfo == null)
-   //                     continue;
-
-   //                 Console.WriteLine("Inputs : " + ainfo.inputs);
-
-   //                 for (int m = 0; m < ainfo.inputs; m++)
-   //                 {
-   //                     acinfo = BassAsio.BASS_ASIO_ChannelGetInfo(true, m);
-   //                     if (acinfo != null)
-   //                     {
-   //                         Console.WriteLine(acinfo.group + " ; " + acinfo.name);
-   //                     }
-   //                 }
-
-   //                 devicesBox.Items.Add(ainfo.name);
-			//    }
-			//    finally
-			//    {
-   //                 BassAsio.BASS_ASIO_Free();
-			//    }
-
-			//	asioCount++;
-
-			//}
-
-			// zeigt alle "normalen" Soundkarten an
-			info = new BASS_DEVICEINFO();
-			for (int n = 0; Bass.BASS_RecordGetDeviceInfo(n, info); n++)
-			{
-				Console.WriteLine("\n" + info.ToString());
-				devicesBox.Items.Add(info.ToString());
-			}
-
-			if (devicesBox.Items.Count > 0)
+            if (devicesBox.Items.Count > 0)
 			{
 				devicesBox.SelectedIndex = 0;
 			}
 
-			methodBox.SelectedIndex = 4;
+			methodBox.SelectedIndex = 3;
 			subBandBox.SelectedIndex = 2;
 
             noOfLabel.Text = "max. " + numberOfBeatsBar.Value + " additional beats";
@@ -319,6 +286,33 @@ namespace AudioAnalyzer
 
 		}
 
+        private void AudioStream_SamplesAvailable(object sender, float[] samples, int count, int channels, int samplerate) {
+            if (this.sampleRate != samplerate) {
+                this.sampleRate = samplerate;
+                configSubBands();
+            }
+            float left = 0;
+            for (int i = 0; i < count; ++i) {
+                if (channels == 1 || ((i & 0x1) == 0x0)) {
+                    _aggregatorLeft.Add(samples[i]);
+                    left = samples[i];
+                    if (channels == 1) {
+                        _fftBuffer.Add(samples[i]);
+                    }
+                } else {
+                    _aggregatorRight.Add(samples[i]);
+                    _fftBuffer.Add((left * 0.5f) + (samples[i] * 0.5f));
+                }
+            }
+        }
+
+        private void AggregatorLeft_MaximumCalculated(object sender, LumosLIB.Tools.FastFourierTransform.MaxSampleEventArgs e) {
+            ComputeLevel(e.MaxSample, 0);
+        }
+
+        private void AggregatorRight_MaximumCalculated(object sender, LumosLIB.Tools.FastFourierTransform.MaxSampleEventArgs e) {
+            ComputeLevel(e.MaxSample, 1);
+        }
 
         /// <summary>
         /// wait short time to fill history buffers before computing values
@@ -335,26 +329,6 @@ namespace AudioAnalyzer
         //    //maxSpecVal = 0;
         //}
 
-		private bool myRecording(int handle, IntPtr buffer, int length, IntPtr user)
-		{
-			return true;
-		}
-
-		//private int myAsioRecording(bool input, int handle, IntPtr buffer, int length, IntPtr user)
-		//{
-		//	Array.Copy(asioBuffer, asioBuffer.Length, asioBuffer, 0, asioBuffer.Length - length);
-		//	Marshal.Copy(buffer, asioBuffer, asioBuffer.Length - length, length);
-		//	return 0;
-		//}
-
-		//private int myStreamCallback(int handle, IntPtr buffer, int length, IntPtr user)
-		//{
-		//	// copy buffered data
-		//	Marshal.Copy(asioBuffer, asioBuffer.Length - length, buffer, length);
-		//	return 0;
-		//}
-
-
 		# region beat
 
 		/// <summary>
@@ -365,16 +339,13 @@ namespace AudioAnalyzer
 		void beatTimer_Tick(object sender, EventArgs e)
         {
             // here we gather info about the stream, when it is playing...
-            if (Bass.BASS_ChannelIsActive(audioStream) == BASSActive.BASS_ACTIVE_PLAYING)
+            if (audioStream.Playing)
             {
                 // the stream is still playing...
                 computeSubbands();
 
                 // compute Beat
                 ComputeBeat();
-
-                // compute Level
-                ComputeLevel();
 
                 // Compute mood
                 computeBaseTune();
@@ -408,80 +379,49 @@ namespace AudioAnalyzer
         /// <summary>
         /// computes the level values
         /// </summary>
-        private void ComputeLevel()
+        private void ComputeLevel(float newLevel, int channel)
         {
             float speed = (float)0.15; // Geschwindigkeit des PeakSink, zwischen 0.03 und 0.3
 
-            float[] levelAlt;
-            levelAlt = new float[2];
+            float levelAlt;
 
-            levelAlt[0] = level[0];
-            levelAlt[1] = level[1];
+            levelAlt = level[channel];
 
             // History zur Ausgabe
-            levelhistory[0, 3] = levelhistory[0, 2];
-            levelhistory[1, 3] = levelhistory[1, 2];
-            levelhistory[0, 2] = levelhistory[0, 1];
-            levelhistory[1, 2] = levelhistory[1, 1];
-            levelhistory[0, 1] = levelAlt[0];
-            levelhistory[1, 1] = levelAlt[1];
+            levelhistory[channel, 3] = levelhistory[channel, 2];
+            levelhistory[channel, 2] = levelhistory[channel, 1];
+            levelhistory[channel, 1] = levelAlt;
 
-            Bass.BASS_ChannelGetLevel(audioStream, level, peakHoldTime, BASSLevel.BASS_LEVEL_STEREO);
+            level[channel] = (float)(newLevel * regler2 * reglerVU);
 
-            level[0] = (float)(level[0] * regler2 * reglerVU);
-            level[1] = (float)(level[1] * regler2 * reglerVU);
-
-            if (level[0] > 1.0)
-                level[0] = (float)1.0;
-            if (level[1] > 1.0)
-                level[1] = (float)1.0;
+            if (level[channel] > 1.0)
+                level[channel] = (float)1.0;
 
             if (peakHold)
             {
-                // rechts
-                if (levelAlt[0] > level[0])
+                if (levelAlt > level[channel])
                 {
-                    if (peakWait[0] < peakWaitMax)
+                    if (peakWait[channel] < peakWaitMax)
                     {
-                        peakWait[0]++;
+                        peakWait[channel]++;
                     }
                     else
                     {
-                        levelAlt[0] = levelAlt[0] - speed;
+                        levelAlt = levelAlt - speed;
                     }
-                    level[0] = levelAlt[0];
+                    level[channel] = levelAlt;
                 }
                 else
                 {
-                    peakWait[0] = 0;
-                }
-                // links
-                if (levelAlt[1] > level[1])
-                {
-                    if (peakWait[1] < peakWaitMax)
-                    {
-                        peakWait[1]++;
-                    }
-                    else
-                    {
-                        levelAlt[1] = levelAlt[1] - speed;
-                    }
-                    level[1] = levelAlt[1];
-                }
-                else
-                {
-                    peakWait[1] = 0;
+                    peakWait[channel] = 0;
                 }
             }
 
-            if (level[0] < 0.0)
-                level[0] = (float)0.0;
-            if (level[1] < 0.0)
-                level[1] = (float)0.0;
+            if (level[channel] < 0.0)
+                level[channel] = (float)0.0;
 
             // History zur Ausgabe (aktueller Wert)
-            levelhistory[0, 0] = level[0];
-            levelhistory[1, 0] = level[1];
+            levelhistory[channel, 0] = level[channel];
         }
 
         /// <summary>
@@ -496,24 +436,17 @@ namespace AudioAnalyzer
             }
             else if (algorithm == 1)
             {
-                beat_detected = Beat2();
+                beat_detected = Beat3();
             }
             else if (algorithm == 2)
             {
-                beat_detected = Beat3();
-            }
-            else if (algorithm == 3)
-            {
                 beat_detected = Beat4();
             }
-            else if (algorithm == 4)
+            else if (algorithm == 3)
             {
                 int quali = 0;
 
                 if (Beat1())
-                    quali += 1;
-
-                if (Beat2())
                     quali += 1;
 
                 if (Beat3())
@@ -527,7 +460,7 @@ namespace AudioAnalyzer
             }
 
             // Beat entdeckt !
-            if (algorithm <= 4)  //TODO: change to 3 and add automatic to the new advanced algorithm
+            if (algorithm <= 3)  //TODO: change to 2 and add automatic to the new advanced algorithm
             {
                 if (beatclearTimer.Enabled == false && beat_detected == true && starting == false)
                 {
@@ -628,27 +561,10 @@ namespace AudioAnalyzer
         /// </summary>
 		private void inputsBox_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			if (audioStream != 0)
+			if (audioStream != null)
 			{
 				startButton_Click(this, new EventArgs());
 			}
-
-            // nicht ASIO
-            //ASIO if (devicesBox.Items.Count > 0 && devicesBox.SelectedIndex >= asioCount)
-            if (devicesBox.Items.Count > 0)
-			{
-				// select the input
-				Bass.BASS_RecordSetInput(inputsBox.SelectedIndex, BASSInput.BASS_INPUT_ON, 1);
-				//Console.WriteLine(inputsBox.SelectedItem.ToString());
-			}
-			//else
-			//{
-			//	// ASIO
-   //             // select the input
-   //             Bass.BASS_RecordSetInput(inputsBox.SelectedIndex, BASSInput.BASS_INPUT_ON, 1);
-   //             //Console.WriteLine(inputsBox.SelectedItem.ToString());
-
-			//}
 
 			startButton.Text = "Start";
 
@@ -662,74 +578,35 @@ namespace AudioAnalyzer
         /// </summary>
 		private void devicesBox_SelectedIndexChanged(object sender, EventArgs e)
 		{
-			if (audioStream != 0)
+			if (audioStream != null)
 			{
 				startButton_Click(this, new EventArgs());
 			}
 
-            // nicht ASIO Devices
-            //ASIO if (devicesBox.Items.Count > 0 && devicesBox.SelectedIndex >= asioCount)
-            if (devicesBox.Items.Count > 0)
-			{
-				inputsBox.Items.Clear();
-				// Zeigt alle Aufnahmeeingänge des ausgewählten Geräts an
-				//ASIO Bass.BASS_RecordInit(devicesBox.SelectedIndex - asioCount);
-				//ASIO Bass.BASS_RecordSetDevice(devicesBox.SelectedIndex - asioCount);
-                Bass.BASS_RecordInit(devicesBox.SelectedIndex);
-                Bass.BASS_RecordSetDevice(devicesBox.SelectedIndex);
-                rinfo = Bass.BASS_RecordGetInfo();
-				//Console.WriteLine("Gerät: " + devicesBox.SelectedItem.ToString());
-				//Console.WriteLine("Anzahl Inputs: " + rinfo.inputs);
-				inputsBox.Items.AddRange(Bass.BASS_RecordGetInputNames());
-				Bass.BASS_RecordFree();
-
-                if (inputsBox.Items.Count > 0)
-                {
-                    inputsBox.SelectedIndex = 0;
-                    inputsBox_SelectedIndexChanged(this, new EventArgs());
-                    startButton.Enabled = true;
+            inputsBox.Items.Clear();
+            AbstractSoundSource source = (AbstractSoundSource)devicesBox.SelectedItem;
+            if (source == null) return;
+            if (source is AsioSoundSource) {
+                inputsBox.Items.AddRange(((AsioSoundSource)source).getInputNames());
+                inputsBox.Visible = true;
+                inputsBox.Enabled = inputsBox.Items.Count > 0;
+                if (inputsBox.Items.Count == 0) {
+                    inputsBox.Text = "< Device not connected or failed >";
                 }
-                else
-                {
-                    startButton.Enabled = false;
-                    inputsBox.SelectedText = "";
-                }
+            } else {
+                inputsBox.Visible = false;
+            }
+            label7.Visible = inputsBox.Visible;
 
-			    //asioActive = false;
-
-			}
-			//// ASIO Devices
-			//if (devicesBox.Items.Count > 0 && devicesBox.SelectedIndex < asioCount)
-			//{
-			//	inputsBox.Items.Clear();
-			//	// Zeigt alle Aufnahmeeingänge des ausgewählten Geräts an
-			//	BassAsio.BASS_ASIO_SetDevice(devicesBox.SelectedIndex);
-			//	BassAsio.BASS_ASIO_Init(devicesBox.SelectedIndex, BASSASIOInit.BASS_ASIO_DEFAULT);
-
-			//	ainfo = BassAsio.BASS_ASIO_GetInfo();
-			//	Console.WriteLine("Inputs : " + ainfo.inputs);
-
-			//	for (int m = 0; m < ainfo.inputs; m++)
-			//	{
-			//		acinfo = BassAsio.BASS_ASIO_ChannelGetInfo(true, m);
-			//		if (acinfo != null)
-			//		{
-			//			inputsBox.Items.Add(acinfo.name);
-			//		}
-			//	}
-
-			//	if (inputsBox.Items.Count > 0)
-			//	{
-			//		inputsBox.SelectedIndex = 0;
-			//		inputsBox_SelectedIndexChanged(this, new EventArgs());
-			//	}
-			//	else
-			//		inputsBox.SelectedText = "";
-
-			//	BassAsio.BASS_ASIO_Free();
-
-			//	asioActive = true;
-			//}
+            if (inputsBox.Items.Count > 0) {
+                inputsBox.SelectedIndex = 0;
+                inputsBox_SelectedIndexChanged(this, new EventArgs());
+                startButton.Enabled = true;
+            } else if (!inputsBox.Visible) {
+                startButton.Enabled = true;
+            } else {
+                startButton.Enabled = false;
+            }
 
 			startButton.Focus();
 		}
@@ -778,18 +655,6 @@ namespace AudioAnalyzer
             }
 		}
 
-
-		// BassErrorHandler
-		private void err()
-		{
-			BASSError error = Bass.BASS_ErrorGetCode();
-			if (error != BASSError.BASS_OK)
-			{
-				throw new InvalidOperationException(error.ToString());
-			}
-		}
-
-
         /// <summary>
         /// selected beat detection mode has changed
         /// </summary>
@@ -814,11 +679,6 @@ namespace AudioAnalyzer
                 sensitivityLabel.Visible = false;
             }
 			else if (methodBox.SelectedIndex==3)
-			{
-                sensitivityBar.Visible = false;
-                sensitivityLabel.Visible = false;
-            }
-            else if (methodBox.SelectedIndex == 4)
             {
                 sensitivityBar.Visible = true;
                 sensitivityLabel.Visible = true;
@@ -1231,72 +1091,23 @@ namespace AudioAnalyzer
         private void startAudioAnalysis()
         {
             resetStatistics();
-            // nicht ASIO Geräte
-            //ASIO if (devicesBox.SelectedIndex >= asioCount)
-            if (devicesBox.SelectedIndex >= 0)
-            {
-                if (inputsBox.Items.Count > 0)
-                {
-                    // wählt das Aufnahmgerät aus
-                    //ASIO Bass.BASS_RecordInit(devicesBox.SelectedIndex - asioCount);
-                    //ASIO Bass.BASS_RecordSetDevice(devicesBox.SelectedIndex - asioCount);
-                    Bass.BASS_RecordInit(devicesBox.SelectedIndex);
-                    Bass.BASS_RecordSetDevice(devicesBox.SelectedIndex);
-                    Console.WriteLine("\nausgewählt:" + devicesBox.SelectedItem.ToString());
-                    Console.WriteLine("Input: " + inputsBox.SelectedItem.ToString());
 
-                    // create the stream from input
-                    audioStream = Bass.BASS_RecordStart(44100, 2, BASSFlag.BASS_SAMPLE_FLOAT, myRecord, IntPtr.Zero);
-                    cinfo = new BASS_CHANNELINFO();
-                    Bass.BASS_ChannelGetInfo(audioStream, cinfo);
+            AbstractSoundSource source = (AbstractSoundSource)devicesBox.SelectedItem;
+            if (source == null) return;
+            audioStream = source;
 
-                    // resets the BPM counter (and values) for method2
-                    _bpm.Reset(cinfo.freq);
-                    _bpm.MaxBPM = 250;
-                    _bpm.MinBPM = 30;
-                    _bpm.BPM = maxBPMBar.Value;
-                }
-                else
-                {
-                    MessageBox.Show("No Input selected or available !");
-                }
+            if (source is AsioSoundSource) {
+                ((AsioSoundSource)source).InputChannel = inputsBox.SelectedIndex;
             }
-            //else
-            //{
-            //    // ASIO channels
-            //    // ToDo ...
-            //    if (inputsBox.Items.Count > 0)
-            //    {
-            //        BassAsio.BASS_ASIO_Init(devicesBox.SelectedIndex, BASSASIOInit.BASS_ASIO_DEFAULT);
-            //        BassAsio.BASS_ASIO_SetRate(44100.0);
-            //        BassAsio.BASS_ASIO_ChannelEnable(true, inputsBox.SelectedIndex, myAsioRecord, IntPtr.Zero);
-            //        try
-            //        {
-            //            BassAsio.BASS_ASIO_ChannelJoin(true, inputsBox.SelectedIndex + 1, inputsBox.SelectedIndex);
-            //            BassAsio.BASS_ASIO_Start(0);
-            //            asioBuffer = new byte[500000000];
-
-            //            audioStream = Bass.BASS_StreamCreate(44100, 2, BASSFlag.BASS_STREAM_DECODE, myStreamProc, IntPtr.Zero);
-            //        }
-            //        catch
-            //        {
-            //            err();
-            //        }
-
-            //    }
-            //    else
-            //    {
-            //        MessageBox.Show("No Input selected or available !");
-            //    }
-
-            //    //MessageBox.Show("ASIO not yet supported !");
-            //}
 
             // Starts the beat detection
             draw = 0;
-            //if (_stream != 0 && Bass.BASS_ChannelPlay(_stream, false))
-            if (audioStream != 0)
-            {
+            if (audioStream.StartRecord()) {
+                audioStream.SamplesAvailable += AudioStream_SamplesAvailable;
+
+                _aggregatorLeft.Reset();
+                _aggregatorRight.Reset();
+
                 starting = true;
                 startTimer.Enabled = true;
 
@@ -1310,7 +1121,7 @@ namespace AudioAnalyzer
             }
             else
             {
-                Console.WriteLine("Error={0}", Bass.BASS_ErrorGetCode());
+                Console.WriteLine("Could not start recording");
             }
         }
 
@@ -1319,13 +1130,14 @@ namespace AudioAnalyzer
         /// </summary>
         internal void stopAudioAnalysis()
         {
-            if (audioStream != 0)
+            if (audioStream != null)
             {
+                audioStream.StopRecord();
+                audioStream.SamplesAvailable -= AudioStream_SamplesAvailable;
                 beatTimer.Stop();
                 addBeatTimer.Stop();
 
-                Bass.BASS_StreamFree(audioStream);
-                audioStream = 0;
+                audioStream = null;
 
                 running = false;
 

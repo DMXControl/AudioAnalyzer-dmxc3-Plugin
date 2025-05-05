@@ -655,7 +655,6 @@ namespace AudioAnalyzer
             this.methodBox.FormattingEnabled = true;
             this.methodBox.Items.AddRange(new object[] {
             "Standard weight method",
-            "Human hearing method (bass.dll)",
             "Simple sound energy",
             "Frequency selected sound energy",
             "Automatic"});

@@ -6,10 +6,6 @@ using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
-using Un4seen.Bass;
-using Un4seen.BassAsio;
-using Un4seen.Bass.Misc;
-using Un4seen.Bass.AddOn.Tags;
 
 
 namespace AudioAnalyzer
@@ -24,7 +20,7 @@ namespace AudioAnalyzer
         {
             bool wasActive = false;
 
-            startBand = Utils.FFTFrequency2Index((int)E2, fftLength, sampleRate);
+            startBand = FFTFrequency2Index((int)E2);
 
             if (beatclearTimer != null)
             {
@@ -45,16 +41,16 @@ namespace AudioAnalyzer
             sublevel = new double[maxbands];
             dbSubLevel = new double[maxbands];
 
-            int lower = Utils.FFTFrequency2Index((int)tones[0], fftLength, sampleRate);
-            int middle = Utils.FFTFrequency2Index((int)tones[0], fftLength, sampleRate);
-            int upper = Utils.FFTFrequency2Index((int)tones[1], fftLength, sampleRate);
+            int lower = FFTFrequency2Index((int)tones[0]);
+            int middle = FFTFrequency2Index((int)tones[0]);
+            int upper = FFTFrequency2Index((int)tones[1]);
             subbands[0, 0] = lower;
             subbands[0, 1] = lower + (upper - lower) / 2;
             for (int i = 1; i < tones.Length - 1; i++)
             {
                 lower = middle;
                 middle = upper;
-                upper = Utils.FFTFrequency2Index((int)tones[i + 1], fftLength, sampleRate);
+                upper = FFTFrequency2Index((int)tones[i + 1]);
                 subbands[i, 0] = lower + (middle - lower) / 2;
                 subbands[i, 1] = middle + (upper - middle) / 2;
                 if (subbands[i - 1, 1] == subbands[i, 0] && subbands[i, 1] > subbands[i, 0])
@@ -82,12 +78,14 @@ namespace AudioAnalyzer
         /// <summary>
         /// computes the harmonic subbands and energies from the fft
         /// </summary>
-        void computeSubbands()
-        {
+        void computeSubbands() {
 
-            // Auflösung BASS_DATA_FFT8192  fft[0] -> 0 Hz, fft[1] -> 5.3832 Hz, fft[i] -> i* 5.3832 Hz --> eindeutig ab G2=98 Hz
-            // TODO: Test mit höherer Auflösung BASS_DATA_FFT16384 fft[0] -> 0 Hz, fft[1] -> 2.6916 Hz, fft[i] -> i* 2.6916 Hz --> eindeutig ab F1=43 Hz
-            Bass.BASS_ChannelGetData(audioStream, fft, (int)BASSData.BASS_DATA_FFT8192);
+            // Auflösung FFT8192  fft[0] -> 0 Hz, fft[1] -> 5.3832 Hz, fft[i] -> i* 5.3832 Hz --> eindeutig ab G2=98 Hz
+            // TODO: Test mit höherer Auflösung FFT16384 fft[0] -> 0 Hz, fft[1] -> 2.6916 Hz, fft[i] -> i* 2.6916 Hz --> eindeutig ab F1=43 Hz
+            if (!_fftBuffer.CalculateFft(fft)) {
+                return;
+            }
+
             actualTime = beatClock.ElapsedMilliseconds;
 
             // aktuelle Energy for subbands
@@ -141,7 +139,8 @@ namespace AudioAnalyzer
                 n++;
 
                 // Spectrum malen
-                db = Utils.LevelToDB(wert * reglerSpectrum, 1);
+                // Level2DB
+                db = 20.0 * Math.Log10(wert * reglerSpectrum);
 
                 // Werte von -60 bis 0
 
@@ -175,6 +174,13 @@ namespace AudioAnalyzer
             OnSendSpectrum(dbSubLevel);
 
             //debugLabel.Text = dbSubLevel.Max().ToString();
+        }
+
+        public int FFTFrequency2Index(int frequency) {
+            int idx = (int)Math.Round((double)fftLength * (double)frequency / (double)sampleRate);
+            if (idx > fftLength / 2 - 1)
+                idx = fftLength / 2 - 1;
+            return idx;
         }
     }
 }

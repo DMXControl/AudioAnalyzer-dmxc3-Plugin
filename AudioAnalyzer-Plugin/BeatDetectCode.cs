@@ -5,10 +5,6 @@ using System.Text;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
-using Un4seen.Bass;
-using Un4seen.BassAsio;
-using Un4seen.Bass.Misc;
-using Un4seen.Bass.AddOn.Tags;
 
 
 namespace AudioAnalyzer
@@ -46,8 +42,8 @@ namespace AudioAnalyzer
 			int i;
 
             bassvalue = 0;
-            int lbound = Utils.FFTFrequency2Index(50, fftLength, sampleRate);
-            int ubound = Utils.FFTFrequency2Index(200, fftLength, sampleRate);
+            int lbound = FFTFrequency2Index(50);
+            int ubound = FFTFrequency2Index(200);
             for (i = lbound; i <= ubound; i++)
             {
                 highvalue += fft[i];
@@ -55,8 +51,8 @@ namespace AudioAnalyzer
             bassvalue = bassvalue / (ubound - lbound);	// 50 Hz - 200 Hz
 
             highvalue = 0;
-            lbound = Utils.FFTFrequency2Index(5000, fftLength, sampleRate);
-            ubound = Utils.FFTFrequency2Index(8000, fftLength, sampleRate);
+            lbound = FFTFrequency2Index(5000);
+            ubound = FFTFrequency2Index(8000);
             for (i = lbound; i <= ubound; i++)
             {
                 highvalue += fft[i];
@@ -110,12 +106,6 @@ namespace AudioAnalyzer
 				beat_detected = false;
                 return false;
 			}
-		}
-
-		bool Beat2()
-		{
-			// computed by bass_fx.dll
-			return _bpm.ProcessAudio(audioStream, false);
 		}
 
 		bool Beat3()
