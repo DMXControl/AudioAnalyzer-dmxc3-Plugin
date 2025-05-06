@@ -47,9 +47,6 @@
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosToolsLIB.dll</HintPath>
 			<Private>True</Private>
 		</Reference>
-		<Reference Include="NAudio">
-		  <HintPath>..\libs\NAudio.dll</HintPath>
-		</Reference>
 	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\music2.ico" />
@@ -65,8 +62,9 @@
 		<None Include="Resources\step.png" />
 	</ItemGroup>
 	<ItemGroup>
-		<PackageReference Include="DockPanelSuite" Version="3.1.0" />
-		<PackageReference Include="log4net" Version="2.0.17" />
+		<PackageReference Include="DockPanelSuite" Version="3.1.1" />
+		<PackageReference Include="log4net" Version="3.0.1" />
+		<PackageReference Include="NAudio" Version="2.2.1" />
 	</ItemGroup>
 	<ItemGroup>
 		<Compile Update="Properties\Resources.Designer.cs">
@@ -90,10 +88,7 @@
 	<PropertyGroup>
 		<PostBuildEvent>FOR /F "skip=2 tokens=2,*" %%A IN ('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Lumos.exe" /v ""') DO set "DMXCRF=%%B"
 rem copy the plugin to build\Plugins
-xcopy "AudioAnalyzer-Plugin.*" "%DMXCRF%\GUI\Plugins\AudioAnalyzer\" /C /F /R /Y /I
-
-rem copy the dependencies to build\dep
-xcopy "..\..\..\..\libs\NAudio.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I</PostBuildEvent>
+xcopy "AudioAnalyzer-Plugin.*" "%DMXCRF%\GUI\Plugins\AudioAnalyzer\" /C /F /R /Y /I</PostBuildEvent>
 		<RunPostBuildEvent>Always</RunPostBuildEvent>
 	</PropertyGroup>
 </Project>
