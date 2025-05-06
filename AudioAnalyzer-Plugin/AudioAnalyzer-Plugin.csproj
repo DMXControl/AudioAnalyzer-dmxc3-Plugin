@@ -47,16 +47,9 @@
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosToolsLIB.dll</HintPath>
 			<Private>True</Private>
 		</Reference>
-		<Reference Include="Bass.Net">
-			<HintPath Condition="Exists('..\..\Lumos\3.3\Dependencies')">..\..\Lumos\3.3\Dependencies\Bass\Bass.Net.dll</HintPath>
-			<HintPath Condition="Exists('..\..\Lumos\Dependencies')">..\..\Lumos\Dependencies\Bass\Bass.Net.dll</HintPath>
-			<HintPath Condition="Exists('..\libs')">..\libs\Bass.Net.dll</HintPath>
+		<Reference Include="NAudio">
+		  <HintPath>..\libs\NAudio.dll</HintPath>
 		</Reference>
-	</ItemGroup>
-	<ItemGroup>
-		<None Include="..\libs\bass.dll">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
 	</ItemGroup>
 	<ItemGroup>
 		<Content Include="Resources\music2.ico" />
@@ -95,14 +88,12 @@
 		</EmbeddedResource>
 	</ItemGroup>
 	<PropertyGroup>
-		<PostBuildEvent>FOR /F "skip=2 tokens=2,*" %%A IN ('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Lumos.exe" /v ""') DO set "DMXCRF=%%B" 
+		<PostBuildEvent>FOR /F "skip=2 tokens=2,*" %%A IN ('reg.exe query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Lumos.exe" /v ""') DO set "DMXCRF=%%B"
 rem copy the plugin to build\Plugins
-xcopy "$(TargetDir)AudioAnalyzer-Plugin.*" "%DMXCRF%\GUI\Plugins\AudioAnalyzer\" /C /F /R /Y /I
+xcopy "AudioAnalyzer-Plugin.*" "%DMXCRF%\GUI\Plugins\AudioAnalyzer\" /C /F /R /Y /I
 
 rem copy the dependencies to build\dep
-xcopy "$(TargetDir)..\..\..\..\..\Lumos\Dependencies\Bass\bass.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I
-xcopy "$(TargetDir)..\..\..\..\..\Lumos\Dependencies\Bass\Bass.Net.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I
-rem xcopy "$(TargetDir)..\..\..\..\..\Lumos\Dependencies\Bass\x32\bassasio\bassasio.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I</PostBuildEvent>
+xcopy "..\..\..\..\libs\NAudio.dll" "%DMXCRF%\GUI\Plugins\api-dlls\" /C /F /R /Y /I</PostBuildEvent>
 		<RunPostBuildEvent>Always</RunPostBuildEvent>
 	</PropertyGroup>
 </Project>

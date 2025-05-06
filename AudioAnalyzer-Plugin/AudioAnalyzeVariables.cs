@@ -7,10 +7,8 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
-using Un4seen.Bass;
-using Un4seen.BassAsio;
-using Un4seen.Bass.Misc;
-using Un4seen.Bass.AddOn.Tags;
+using NAudio.Wave;
+using NAudio.Utils;
 
 
 namespace AudioAnalyzer
@@ -18,11 +16,14 @@ namespace AudioAnalyzer
 	public partial class audioAnalysForm
 	{
 		// LOCAL VARS
-		private int audioStream = 0;
+		private AbstractSoundSource audioStream = null;
+        private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorLeft;
+        private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorRight;
+        private FFTCircularBuffer _fftBuffer;
 
         internal bool running = false;
         private int fftLength = 8192;
-        private int sampleRate = 44100;
+        private int sampleRate = 48000; //44100;
         private float[] fft = new float[4096];
 		private bool beat_detected;
 		private bool starting = false;
@@ -33,37 +34,20 @@ namespace AudioAnalyzer
         int[] peakWait = new int[2] { 0, 0 }; // for Level
         int peakWaitMax = 5; // for Level PeakHold = 5x20ms = 0.1s
         internal double reglerSpectrum = 1;	// for Spectrum (0,5 - 3)
-        private Visuals spectrum = new Visuals();
-		private BPMCounter _bpm = new BPMCounter(20, 44100);
 		private int beatInterval = 20; // 20ms
-		private Un4seen.Bass.BASSTimer beatTimer = null;
-		private Un4seen.Bass.BASSTimer beatclearTimer = null;
-		private Un4seen.Bass.BASSTimer beatclearTimer2 = null;
-		private Un4seen.Bass.BASSTimer startTimer = null;
-//        private Un4seen.Bass.BASSTimer infoTimer = null;
+		private Timer beatTimer = null;
+		private Timer beatclearTimer = null;
+		private Timer beatclearTimer2 = null;
+		private Timer startTimer = null;
+//        private Timer infoTimer = null;
         private Color beatActive = Color.Red;
         private Color forecastBeatActive = Color.LightBlue;
         private Color levelActive = Color.PaleVioletRed;
 		private Color spectrumActive = Color.SpringGreen;
 		private Color spectrumLineActive = Color.Yellow;
 		private Color beatPassive = Color.Black;
-		private BASS_DEVICEINFO info;
-		private BASS_RECORDINFO rinfo;
-		private BASS_CHANNELINFO cinfo;
-//		private BASS_ASIO_INFO ainfo;
-//		private BASS_ASIO_DEVICEINFO adinfo;
-//		private BASS_ASIO_CHANNELINFO acinfo;
-//		private BassAsioHandler asioHandler;
 //		private string[] inputs;
-//		private int asioCount = 0;
-//		private bool asioActive = false;
 		internal double MaxBPM = 200;
-
-		private RECORDPROC myRecord;
-//		private ASIOPROC myAsioRecord;
-//		private STREAMPROC myStreamProc;
-//		private Byte[] asioBuffer;
-
 
         private int startBand;
         private int maxbands = 96;     // E2 bis Eb10, 82Hz - 19912Hz
@@ -132,7 +116,7 @@ namespace AudioAnalyzer
         private double minsubenergy = 1.0E-14;
 
         // for automatic mode
-        private int autoSensitivity=3;
+        private int autoSensitivity=2;
 
 		# endregion beatvars
 
@@ -162,7 +146,7 @@ namespace AudioAnalyzer
 
         internal bool forecast = true;      // BPM Generierung aktiv
         internal int nbForecast = 16;         // max. Anzahl an zu generierenden Beats
-        private Un4seen.Bass.BASSTimer addBeatTimer = null;
+        private Timer addBeatTimer = null;
         private int addedBeats;             // Zähler für künstliche Beats
         private int baseBeat=150;           // Vorgabe BPM für Generierung
 
@@ -183,9 +167,9 @@ namespace AudioAnalyzer
         }
         private string[] rhythmNames = new string[6] {"no Rythm", "four quarters", "three quarters", "two quarters", "Blues Rhythm", "five quarters"};
 
-        private Un4seen.Bass.BASSTimer mainBeatTimer;
-        private Un4seen.Bass.BASSTimer subBeatTimer;
-        private Un4seen.Bass.BASSTimer tapTimeout;
+        private Timer mainBeatTimer;
+        private Timer subBeatTimer;
+        private Timer tapTimeout;
         private System.Diagnostics.Stopwatch tapWatch;
         private int numberOfSubbeats = 3;
         private int numberOfDrawnBeats = 8;

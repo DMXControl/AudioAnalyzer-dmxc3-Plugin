@@ -6,10 +6,6 @@ using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using Un4seen.Bass;
-using Un4seen.BassAsio;
-using Un4seen.Bass.Misc;
-using Un4seen.Bass.AddOn.Tags;
 
 
 namespace AudioAnalyzer
