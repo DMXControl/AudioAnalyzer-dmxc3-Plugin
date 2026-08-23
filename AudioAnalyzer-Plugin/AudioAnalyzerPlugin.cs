@@ -115,6 +115,8 @@ namespace AudioAnalyzer
             c.setValue("SubBands", spec);
             int svu = (int)pluginForm.gainSpectrumBar.Invoke(new Func<int>(() => pluginForm.gainSpectrumBar.Value));
             c.setValue("SpecGain", svu);
+            bool stereoSpec = (bool)pluginForm.stereoSpectrumCheckBox.Invoke(new Func<bool>(() => pluginForm.stereoSpectrumCheckBox.Checked));
+            c.setValue("StereoSpectrum", stereoSpec);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Beat");
@@ -188,6 +190,12 @@ namespace AudioAnalyzer
 
             foreach (ManagedTreeItem i in m.GetChildren("Spectrum"))
             {
+                if (i.hasValue<bool>("StereoSpectrum"))
+                {
+                    pluginForm.stereoSpectrumCheckBox.Checked = i.getValue<bool>("StereoSpectrum");
+                    pluginForm.stereoSpectrum = i.getValue<bool>("StereoSpectrum");
+                }
+
                 if (i.hasValue<int>("SubBands"))
                 {
                     //MessageBox.Show("1");

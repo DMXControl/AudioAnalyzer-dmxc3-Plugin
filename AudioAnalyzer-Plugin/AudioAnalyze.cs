@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Diagnostics;
 using LumosLIB.GUI.Windows;
 using Lumos.GUI.BaseWindow;
+using AudioAnalyzer.AAEventArgs;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -257,6 +258,8 @@ namespace AudioAnalyzer
             _aggregatorRight.NotificationCount = 1024;
             _aggregatorRight.MaximumCalculated += AggregatorRight_MaximumCalculated;
             _fftBuffer = new FFTCircularBuffer(fftLength);
+            _fftBufferLeft = new FFTCircularBuffer(fftLength);
+            _fftBufferRight = new FFTCircularBuffer(fftLength);
 
             using (MMDeviceEnumerator enumerator = new MMDeviceEnumerator()) {
                 foreach (MMDevice wasapi in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) {
@@ -294,15 +297,22 @@ namespace AudioAnalyzer
             }
             float left = 0;
             for (int i = 0; i < count; ++i) {
-                if (channels == 1 || ((i & 0x1) == 0x0)) {
+                // alles jenseits der ersten beiden Kanäle (z.B. 5.1-Loopback) wird ignoriert
+                int channel = i % channels;
+                if (channel == 0) {
                     _aggregatorLeft.Add(samples[i]);
                     left = samples[i];
                     if (channels == 1) {
+                        // Mono
                         _fftBuffer.Add(samples[i]);
+                        _fftBufferLeft.Add(samples[i]);
+                        _fftBufferRight.Add(samples[i]);
                     }
-                } else {
+                } else if (channel == 1) {
                     _aggregatorRight.Add(samples[i]);
                     _fftBuffer.Add((left * 0.5f) + (samples[i] * 0.5f));
+                    _fftBufferLeft.Add(left);
+                    _fftBufferRight.Add(samples[i]);
                 }
             }
         }
@@ -1108,6 +1118,9 @@ namespace AudioAnalyzer
 
                 _aggregatorLeft.Reset();
                 _aggregatorRight.Reset();
+                _fftBuffer.Reset();
+                _fftBufferLeft.Reset();
+                _fftBufferRight.Reset();
 
                 starting = true;
                 startTimer.Enabled = true;
@@ -1154,8 +1167,18 @@ namespace AudioAnalyzer
                 for (int i = 0; i < usedbands;i++ )
                 {
                     dbSubLevel[i] = 0.0F;
+                    dbSubLevelLeft[i] = 0.0F;
+                    dbSubLevelRight[i] = 0.0F;
                 }
-                OnSendSpectrum(dbSubLevel);
+                if (stereoSpectrum)
+                {
+                    OnSendSpectrum(dbSubLevelLeft, ESpectrumChannel.Left);
+                    OnSendSpectrum(dbSubLevelRight, ESpectrumChannel.Right);
+                }
+                else
+                {
+                    OnSendSpectrum(dbSubLevel, ESpectrumChannel.Mono);
+                }
 
                 resetStatistics();
             }
@@ -1307,6 +1330,29 @@ namespace AudioAnalyzer
         {
             peakHoldTime = (float)PeakHoldBar.Value / 1000;
             //MessageBox.Show(peakHoldTime.ToString());
+        }
+
+        /// <summary>
+        /// separate spectrum analysis per channel on/off
+        /// </summary>
+        private void stereoSpectrumCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            stereoSpectrum = stereoSpectrumCheckBox.Checked;
+
+            _fftBufferLeft?.Reset();
+            _fftBufferRight?.Reset();
+
+            // Nullen ausgeben, solange die R-Quellen noch registriert sind.
+            if (!stereoSpectrum && dbSubLevelRight != null)
+            {
+                for (int i = 0; i < usedbands; i++)
+                {
+                    dbSubLevelRight[i] = 0.0F;
+                }
+                OnSendSpectrum(dbSubLevelRight, ESpectrumChannel.Right);
+            }
+
+            OnSendSpectrumCount(usedbands);
         }
     }
 }

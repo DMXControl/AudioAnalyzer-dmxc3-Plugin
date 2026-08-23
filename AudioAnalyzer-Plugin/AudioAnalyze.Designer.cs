@@ -64,6 +64,7 @@ namespace AudioAnalyzer
             this.label10 = new LumosControls.Controls.LumosLabel();
             this.label4 = new LumosControls.Controls.LumosLabel();
             this.subBandBox = new LumosControls.Controls.LumosComboBox();
+            this.stereoSpectrumCheckBox = new LumosControls.Controls.LumosCheckBox();
             this.beatTabPage = new LumosControls.Controls.LumosTabPage();
             this.generatedBpmLabel = new LumosControls.Controls.LumosLabel();
             this.label11 = new LumosControls.Controls.LumosLabel();
@@ -434,6 +435,7 @@ namespace AudioAnalyzer
             this.spectrumTabPage.Controls.Add(this.label10);
             this.spectrumTabPage.Controls.Add(this.label4);
             this.spectrumTabPage.Controls.Add(this.subBandBox);
+            this.spectrumTabPage.Controls.Add(this.stereoSpectrumCheckBox);
             this.spectrumTabPage.Location = new System.Drawing.Point(4, 25);
             this.spectrumTabPage.Name = "spectrumTabPage";
             this.spectrumTabPage.Size = new System.Drawing.Size(354, 129);
@@ -503,9 +505,21 @@ namespace AudioAnalyzer
             this.subBandBox.TabIndex = 1;
             this.subBandBox.Text = null;
             this.subBandBox.SelectedIndexChanged += new System.EventHandler(this.subBandBox_SelectedIndexChanged);
-            // 
+            //
+            // stereoSpectrumCheckBox
+            //
+            this.stereoSpectrumCheckBox.AutoSize = true;
+            this.stereoSpectrumCheckBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 12.29091F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Pixel);
+            this.stereoSpectrumCheckBox.Location = new System.Drawing.Point(15, 106);
+            this.stereoSpectrumCheckBox.Name = "stereoSpectrumCheckBox";
+            this.stereoSpectrumCheckBox.Size = new System.Drawing.Size(266, 20);
+            this.stereoSpectrumCheckBox.TabIndex = 10;
+            this.stereoSpectrumCheckBox.Text = "Stereo mode";
+            this.stereoSpectrumCheckBox.UseVisualStyleBackColor = true;
+            this.stereoSpectrumCheckBox.CheckedChanged += new System.EventHandler(this.stereoSpectrumCheckBox_CheckedChanged);
+            //
             // beatTabPage
-            // 
+            //
             this.beatTabPage.Controls.Add(this.generatedBpmLabel);
             this.beatTabPage.Controls.Add(this.label11);
             this.beatTabPage.Controls.Add(this.halfCheckBox);
@@ -1044,6 +1058,7 @@ namespace AudioAnalyzer
         public LumosCheckBox halfCheckBox;
         public LumosCheckBox doubleCheckBox;
         public LumosCheckBox PeakHoldCheckBox;
+        public LumosCheckBox stereoSpectrumCheckBox;
         public LumosTrackBar PeakHoldBar;
         private LumosLabel lumosLabel1;
     }

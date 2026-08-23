@@ -29,6 +29,7 @@ namespace AudioAnalyzer {
 				this.spectrumTabPage.Text = T._p("audioAnalysForm.spectrumTabPage.Text", "Spectrum");
 				this.label10.Text = T._p("audioAnalysForm.label10.Text", "Level correction :");
 				this.label4.Text = T._p("audioAnalysForm.label4.Text", "Number of Bands");
+				this.stereoSpectrumCheckBox.Text = T._p("audioAnalysForm.stereoSpectrumCheckBox.Text", "Stereo mode");
 				this.beatTabPage.Text = T._p("audioAnalysForm.beatTabPage.Text", "Beat Detection");
 				this.generatedBpmLabel.Text = T._p("audioAnalysForm.generatedBpmLabel.Text", "0");
 				this.label11.Text = T._p("audioAnalysForm.label11.Text", "generated BPM");
