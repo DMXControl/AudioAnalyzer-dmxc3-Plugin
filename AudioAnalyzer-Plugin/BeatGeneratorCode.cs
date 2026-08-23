@@ -103,90 +103,90 @@ namespace AudioAnalyzer
         {
             int big = 14;
             int small = 10;
-            Pen p = new Pen(Color.Black, 1);
             Color fillColor;
             Color beatColor = Color.Red;
             Color baseColor = Color.Black;
             SolidBrush b;
-            SolidBrush b1 = new SolidBrush(baseColor);
-            SolidBrush b2 = new SolidBrush(beatColor);
 
-
-            Graphics g = generatorPictureBox.CreateGraphics();
-            int i;
-
-            g.Clear(formBackColor);
-
-            int dx = generatorPictureBox.Width / 8;
-            int sx = dx / 2;
-            int y = generatorPictureBox.Height / 2;
-
-            for (i = 0; i < numberOfDrawnBeats; i++)
+            using (Pen p = new Pen(Color.Black, 1))
+            using (SolidBrush b1 = new SolidBrush(baseColor))
+            using (SolidBrush b2 = new SolidBrush(beatColor))
+            using (Graphics g = generatorPictureBox.CreateGraphics())
             {
-                if (i == drawnBeatsCount)
+                int i;
+
+                g.Clear(formBackColor);
+
+                int dx = generatorPictureBox.Width / 8;
+                int sx = dx / 2;
+                int y = generatorPictureBox.Height / 2;
+
+                for (i = 0; i < numberOfDrawnBeats; i++)
                 {
-                    fillColor = beatColor;
-                    b = b2;
-                }
-                else
-                {
-                    fillColor = baseColor;
-                    b = b1;
-                }
+                    if (i == drawnBeatsCount)
+                    {
+                        fillColor = beatColor;
+                        b = b2;
+                    }
+                    else
+                    {
+                        fillColor = baseColor;
+                        b = b1;
+                    }
 
-                if (i < numberOfDrawnBeats - 1)
-                {
-                    g.DrawLine(p, sx + i * dx, y, sx + (i + 1) * dx + 5, y);
-                }
+                    if (i < numberOfDrawnBeats - 1)
+                    {
+                        g.DrawLine(p, sx + i * dx, y, sx + (i + 1) * dx + 5, y);
+                    }
 
-                switch (generatorRhythm)
-                {
-                    case RhythmType.noRhythm:
-                        g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
-                        break;
-                    case RhythmType.fourQuarter:
-
-                        if (i==0 || i==4)
+                    switch (generatorRhythm)
+                    {
+                        case RhythmType.noRhythm:
                             g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
-                        else
-                            g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
+                            break;
+                        case RhythmType.fourQuarter:
 
-                        break;
-                    case RhythmType.threeQuarter:
+                            if (i==0 || i==4)
+                                g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
+                            else
+                                g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
 
-                        if (i == 0 || i == 3)
-                            g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
-                        else
-                            g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
+                            break;
+                        case RhythmType.threeQuarter:
 
-                        break;
-                    case RhythmType.twoQuarter:
+                            if (i == 0 || i == 3)
+                                g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
+                            else
+                                g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
 
-                        if (i == 0 || i == 2 || i == 4 || i==6)
-                            g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
-                        else
-                            g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
+                            break;
+                        case RhythmType.twoQuarter:
 
-                        break;
-                    case RhythmType.bluesRhythm:
+                            if (i == 0 || i == 2 || i == 4 || i==6)
+                                g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
+                            else
+                                g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
 
-                        if (i == 0 || i == 2 || i == 4 || i == 6)
-                            g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
-                        else
-                            g.FillEllipse(b, sx + i * dx + 5 , y - small / 2, small, small);
+                            break;
+                        case RhythmType.bluesRhythm:
 
-                        break;
-                    case RhythmType.fiveQuarter:
+                            if (i == 0 || i == 2 || i == 4 || i == 6)
+                                g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
+                            else
+                                g.FillEllipse(b, sx + i * dx + 5 , y - small / 2, small, small);
 
-                        if (i == 0)
-                            g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
-                        else
-                            g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
+                            break;
+                        case RhythmType.fiveQuarter:
 
-                        break;
+                            if (i == 0)
+                                g.FillEllipse(b, sx + i * dx - big / 2, y - big / 2, big, big);
+                            else
+                                g.FillEllipse(b, sx + i * dx - small / 2, y - small / 2, small, small);
+
+                            break;
+                    }
                 }
             }
-
         }
 
 

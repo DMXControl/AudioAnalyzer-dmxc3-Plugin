@@ -24,10 +24,11 @@ namespace AudioAnalyzer {
             List<string> channels = new List<string>();
 
             try {
-                AsioOut asioOut = new AsioOut(_driverName);
-                int channelCount = asioOut.DriverInputChannelCount;
-                for (int i = 0; i < channelCount; ++i) {
-                    channels.Add(asioOut.AsioInputChannelName(i));
+                using (AsioOut asioOut = new AsioOut(_driverName)) {
+                    int channelCount = asioOut.DriverInputChannelCount;
+                    for (int i = 0; i < channelCount; ++i) {
+                        channels.Add(asioOut.AsioInputChannelName(i));
+                    }
                 }
             } catch (Exception) {
             }

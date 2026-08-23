@@ -258,9 +258,10 @@ namespace AudioAnalyzer
             _aggregatorRight.MaximumCalculated += AggregatorRight_MaximumCalculated;
             _fftBuffer = new FFTCircularBuffer(fftLength);
 
-            MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
-            foreach (MMDevice wasapi in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) {
-                devicesBox.Items.Add(new WasapiSoundSource(wasapi));
+            using (MMDeviceEnumerator enumerator = new MMDeviceEnumerator()) {
+                foreach (MMDevice wasapi in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) {
+                    devicesBox.Items.Add(new WasapiSoundSource(wasapi));
+                }
             }
             if (AsioOut.isSupported()) {
                 foreach (string asio in AsioOut.GetDriverNames()) {
