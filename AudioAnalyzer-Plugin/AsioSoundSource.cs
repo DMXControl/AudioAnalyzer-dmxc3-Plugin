@@ -18,6 +18,8 @@ namespace AudioAnalyzer {
             this._channel = 0;
         }
 
+        public override string Id => "ASIO:" + _driverName;
+
         public override bool Playing => true;
 
         public string[] getInputNames() {

@@ -13,6 +13,8 @@ namespace AudioAnalyzer {
             SamplesAvailable?.Invoke(this, samples, count, channels, samplerate);
         }
 
+        public abstract string Id { get; }
+
         public abstract bool Playing { get; }
         public abstract bool StartRecord();
         public abstract bool StopRecord();

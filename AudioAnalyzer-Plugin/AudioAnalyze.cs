@@ -215,8 +215,10 @@ namespace AudioAnalyzer
             //{
             //    rhythmTypeComboBox.Items.Add(rhythmNames[i]);
             //}
-            rhythmTypeComboBox.SelectedIndex = 0;
             formBackColor = generatorTabPage.BackColor;
+            setRhythm((int)generatorRhythm);
+            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+            drawBeatPicture(0);
 
 			// create a List for sorted indices for Beat4()
 			sortedindex = new List<int>(256);
@@ -248,7 +250,6 @@ namespace AudioAnalyzer
             // init Mood-Picture
             moodBitmap = new Bitmap(moodPictureBox.Width, moodPictureBox.Height);
 
-			maxBPMBar.Value = (int)MaxBPM;
 			newBPM();
 
             _aggregatorLeft = new LumosLIB.Tools.FastFourierTransform.SampleAggregator();
@@ -272,13 +273,10 @@ namespace AudioAnalyzer
                 }
             }
 
-            if (devicesBox.Items.Count > 0)
-			{
-				devicesBox.SelectedIndex = 0;
-			}
+			selectWantedDevice();
 
-			methodBox.SelectedIndex = 3;
-			subBandBox.SelectedIndex = 2;
+			methodBox.SelectedIndex = algorithm;
+			setUsedBands(usedbands);
 
             noOfLabel.Text = "max. " + numberOfBeatsBar.Value + " additional beats";
 
@@ -749,6 +747,134 @@ namespace AudioAnalyzer
 
 			startButton.Focus();
 		}
+
+        #region settings persistence
+
+        /// <summary>
+        /// remembers the wanted device and applies it if the list is already filled.
+        /// </summary>
+        internal void setDevice(string deviceId, int inputChannel)
+        {
+            wantedDeviceId = deviceId;
+            wantedInputChannel = inputChannel;
+
+            selectWantedDevice();
+        }
+
+        /// <summary>
+        /// selects the remembered device, falling back to the first entry. Called from Load
+        /// once the list exists, and from setDevice if it already does.
+        /// </summary>
+        private void selectWantedDevice()
+        {
+            if (devicesBox.Items.Count == 0)
+                return;
+
+            int idx = 0;
+            if (!String.IsNullOrEmpty(wantedDeviceId))
+            {
+                for (int i = 0; i < devicesBox.Items.Count; i++)
+                {
+                    AbstractSoundSource s = devicesBox.Items[i] as AbstractSoundSource;
+                    if (s != null && String.Equals(s.Id, wantedDeviceId))
+                    {
+                        idx = i;
+                        break;
+                    }
+                }
+            }
+
+            // Zuweisung nur bei echter Änderung: der Handler startet eine laufende
+            // Analyse neu, und inputsBox ist bei gleichem Gerät schon gefüllt
+            if (devicesBox.SelectedIndex != idx)
+                devicesBox.SelectedIndex = idx;
+
+            // inputsBox wird von devicesBox_SelectedIndexChanged gefüllt
+            if (wantedInputChannel >= 0 && wantedInputChannel < inputsBox.Items.Count)
+                inputsBox.SelectedIndex = wantedInputChannel;
+        }
+
+        /// <summary>
+        /// identifier of the selected device, or the remembered one while the list is empty
+        /// </summary>
+        internal string getSelectedDeviceId()
+        {
+            AbstractSoundSource s = devicesBox.SelectedItem as AbstractSoundSource;
+            return s != null ? s.Id : wantedDeviceId;
+        }
+
+        internal int getSelectedInputChannel()
+        {
+            return inputsBox.SelectedIndex >= 0 ? inputsBox.SelectedIndex : wantedInputChannel;
+        }
+
+        /// <summary>
+        /// sets the number of spectrum bands and keeps field and combobox in sync.
+        /// Safe to call at any time, the items are filled by the designer.
+        /// </summary>
+        internal void setUsedBands(int bands)
+        {
+            int idx = subBandBox.Items.IndexOf(bands.ToString());
+            if (idx < 0)
+            {
+                // unbekannter Wert, z.B. aus einem beschädigten Projekt
+                idx = subBandBox.Items.IndexOf("32");
+            }
+            if (idx < 0)
+                return;
+
+            usedbands = Convert.ToInt32(subBandBox.Items[idx]);
+
+            if (subBandBox.SelectedIndex != idx)
+                subBandBox.SelectedIndex = idx;
+
+            OnSendSpectrumCount(usedbands);
+        }
+
+        /// <summary>
+        /// sets the generator rhythm and keeps field and combobox in sync.
+        /// The items are filled by the constructor.
+        /// </summary>
+        internal void setRhythm(int index)
+        {
+            if (index < 0 || index >= rhythmTypeComboBox.Items.Count)
+                index = 0;
+
+            generatorRhythm = (RhythmType)index;
+
+            if (rhythmTypeComboBox.SelectedIndex != index)
+                rhythmTypeComboBox.SelectedIndex = index;
+        }
+
+        /// <summary>
+        /// Derives all internal fields from the current control values. The restore path
+        /// only assigns the controls, and TrackBar.Scroll is not raised when Value is set
+        /// from code - so those fields have to be pulled over explicitly. Safe to call
+        /// before audioAnalysForm_Load has run.
+        /// </summary>
+        internal void applyControlValues()
+        {
+            // erst die Schalter, dann die Regler, die davon abhängen
+            peakHold = PeakHoldCheckBox.Checked;
+            maxBpmOn = maxBPMCheckBox.Checked;
+            doubleSpeed = doubleCheckBox.Checked;
+            halfSpeed = halfCheckBox.Checked;
+            stereoSpectrum = stereoSpectrumCheckBox.Checked;
+            if (methodBox.SelectedIndex >= 0)
+                algorithm = methodBox.SelectedIndex;
+
+            gainBar_ValueChanged(gainBar, EventArgs.Empty);
+            gainVUBar_ValueChanged(gainVUBar, EventArgs.Empty);
+            gainSpectrumBar_ValueChanged(gainSpectrumBar, EventArgs.Empty);
+            PeakHoldBar_Scroll(PeakHoldBar, EventArgs.Empty);
+            sensitivityBar_Scroll(sensitivityBar, EventArgs.Empty);
+            numberOfBeatsBar_Scroll(numberOfBeatsBar, EventArgs.Empty);
+            maxBPMBar_Scroll(maxBPMBar, EventArgs.Empty);   // braucht maxBpmOn
+
+            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+        }
+
+        #endregion
 
 		internal void gainBar_ValueChanged(object sender, EventArgs e)
 		{
@@ -1286,29 +1412,7 @@ namespace AudioAnalyzer
         /// </summary>
         private void audioAnalysForm_Shown(object sender, EventArgs e)
         {
-            switch (usedbands)
-            {
-                case 8:
-                    subBandBox.SelectedIndex = 0;
-                    break;
-                case 16:
-                    subBandBox.SelectedIndex = 1;
-                    break;
-                case 32:
-                    subBandBox.SelectedIndex = 2;
-                    break;
-                case 64:
-                    subBandBox.SelectedIndex = 3;
-                    break;
-                case 96:
-                    subBandBox.SelectedIndex = 4;
-                    break;
-                default:
-                    usedbands = 16;
-                    subBandBox.SelectedIndex = 1;
-                    break;
-
-            }
+            setUsedBands(usedbands);
         }
 
         /// <summary>

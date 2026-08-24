@@ -15,6 +15,8 @@ namespace AudioAnalyzer {
             this._device = device;
         }
 
+        public override string Id => "WASAPI:" + _device.ID;
+
         public override bool Playing {
             get {
                 if (_capture == null) return false;

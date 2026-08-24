@@ -17,6 +17,10 @@ namespace AudioAnalyzer
 	{
 		// LOCAL VARS
 		private AbstractSoundSource audioStream = null;
+        // Wunschauswahl aus dem Projekt. Die Geräteliste entsteht erst in Load, deshalb
+        // wird hier gemerkt und dort angewendet.
+        private string wantedDeviceId = null;
+        private int wantedInputChannel = 0;
         private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorLeft;
         private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorRight;
         private FFTCircularBuffer _fftBuffer;
@@ -68,7 +72,7 @@ namespace AudioAnalyzer
 
 		# region beatvars
         // common
-        internal int algorithm = 0;
+        internal int algorithm = 3;
 	    internal bool maxBpmOn = true;
  
 		// for Method Beat1()
