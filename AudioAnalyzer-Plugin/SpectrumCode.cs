@@ -23,7 +23,6 @@ namespace AudioAnalyzer
 
             // startBand indiziert tones/subbands, nicht fft: E2 bis Eb10 ergibt
             // startBand + maxbands == tones.Length
-            startBand = Array.IndexOf(tones, E2);
 
             if (beatclearTimer != null)
             {
@@ -80,6 +79,55 @@ namespace AudioAnalyzer
                     beatclearTimer.Enabled = true;
                 }
             }
+        }
+
+        /// <summary>
+        /// Nominal frequency range of a display band (1-based) as a label, e.g. "80-113 Hz".
+        /// Derived from the tone table, so independent of the sample rate - configSubBands
+        /// only rounds these edges onto the fft bin raster.
+        /// </summary>
+        internal string getBandRangeLabel(int number)
+        {
+            int i = number - 1;
+            if (i < 0 || i >= usedbands)
+                return null;
+
+            // dieselbe Gruppierung wie computeDbSubLevel
+            int from = i * maxbands / usedbands;
+            int to = (i + 1) * maxbands / usedbands;
+
+            return formatRange(toneBandLow(startBand + from), toneBandHigh(startBand + to - 1));
+        }
+
+        /// <summary>
+        /// lower edge of a semitone band: the midpoint to the tone below, matching how
+        /// configSubBands halves the distance between neighbouring bin indices
+        /// </summary>
+        private double toneBandLow(int tone)
+        {
+            return tone > 0 ? (tones[tone - 1] + tones[tone]) / 2 : tones[0];
+        }
+
+        private double toneBandHigh(int tone)
+        {
+            // das letzte Tonband endet in configSubBands genau auf dem Ton, nicht auf der Mitte
+            return tone >= tones.Length - 1
+                ? tones[tones.Length - 1]
+                : (tones[tone] + tones[tone + 1]) / 2;
+        }
+
+        private static string formatRange(double low, double high)
+        {
+            if (high < 1000)
+                return String.Format("{0:F0}-{1:F0} Hz", low, high);
+            if (low >= 1000)
+                return String.Format("{0}-{1} kHz", formatKHz(low), formatKHz(high));
+            return String.Format("{0:F0} Hz-{1} kHz", low, formatKHz(high));
+        }
+
+        private static string formatKHz(double hz)
+        {
+            return (hz / 1000).ToString("0.0");
         }
 
         /// <summary>

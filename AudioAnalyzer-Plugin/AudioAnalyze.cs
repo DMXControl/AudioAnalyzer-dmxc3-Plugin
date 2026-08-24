@@ -141,6 +141,8 @@ namespace AudioAnalyzer
             tones[113] = D10;
             tones[114] = DIS10;
 
+            startBand = Array.IndexOf(tones, E2);
+
             for (int i = 0; i < rhythmNames.Length; i++)
             {
                 rhythmTypeComboBox.Items.Add(rhythmNames[i]);
