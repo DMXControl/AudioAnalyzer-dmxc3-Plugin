@@ -14,6 +14,11 @@ namespace AudioAnalyzer
 
         private void computeMainAndSubBeatTimes(double BPM, RhythmType actualRythm)
         {
+            // Die Timer entstehen erst in audioAnalysForm_Load. Wird beim Laden eines
+            // Projekts vorher schon eine BPM gesetzt, holt Load den Aufruf nach.
+            if (mainBeatTimer == null || subBeatTimer == null)
+                return;
+
             switch (actualRythm)
             {
                 case RhythmType.noRhythm:
