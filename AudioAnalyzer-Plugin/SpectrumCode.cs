@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
+using AudioAnalyzer.AAEventArgs;
 
 
 namespace AudioAnalyzer
@@ -41,7 +42,11 @@ namespace AudioAnalyzer
             subbands = new int[tones.Length, 2];
 
             sublevel = new double[maxbands];
+            sublevelLeft = new double[maxbands];
+            sublevelRight = new double[maxbands];
             dbSubLevel = new double[maxbands];
+            dbSubLevelLeft = new double[maxbands];
+            dbSubLevelRight = new double[maxbands];
 
             int lower = FFTFrequency2Index((int)tones[0]);
             int middle = FFTFrequency2Index((int)tones[0]);
@@ -90,22 +95,43 @@ namespace AudioAnalyzer
 
             actualTime = beatClock.ElapsedMilliseconds;
 
-            // aktuelle Energy for subbands
+            // Beat-Erkennung und Stimmung arbeiten immer auf dem Mono-Mix
+            computeSubbands(fft, sublevel, subenergy);
+            minsubenergy = subenergy.Min();
+        }
+
+        /// <summary>
+        /// computes the additional per-channel ffts. Only drawSpectrum() reads their result,
+        /// so this runs at the drawing rate instead of every beat tick.
+        /// </summary>
+        private void computeChannelSubbands()
+        {
+            if (_fftBufferLeft.CalculateFft(fftLeft))
+                computeSubbands(fftLeft, sublevelLeft, null);
+            if (_fftBufferRight.CalculateFft(fftRight))
+                computeSubbands(fftRight, sublevelRight, null);
+        }
+
+        /// <summary>
+        /// computes level (and optionally energy) per subband from a single fft
+        /// </summary>
+        private void computeSubbands(float[] fft, double[] sublevel, double[] subenergy)
+        {
             for (int i = 0; i < maxbands; i++)
             {
-                subenergy[i] = 0;
-                sublevel[i] = 0;
+                double energy = 0;
+                double level = 0;
                 int count = 0;
                 for (int j = subbands[startBand + i, 0]; j <= subbands[startBand + i, 1] && j < fft.Length; j++)
                 {
-                    subenergy[i] = subenergy[i] + fft[j] * fft[j] * regler2;
-                    sublevel[i] = sublevel[i] + fft[j];
+                    energy = energy + fft[j] * fft[j] * regler2;
+                    level = level + fft[j];
                     count++;
                 }
-                subenergy[i] = subenergy[i] * count / fft.Length;
-                sublevel[i] = sublevel[i] / count;
+                if (subenergy != null)
+                    subenergy[i] = energy * count / fft.Length;
+                sublevel[i] = level / count;
             }
-            minsubenergy = subenergy.Min();
         }
 
         /// <summary>
@@ -113,69 +139,127 @@ namespace AudioAnalyzer
         /// </summary>
         void drawSpectrum()
         {
-            double db;
-            int scaledDB;
+            if (stereoSpectrum)
+            {
+                computeChannelSubbands();
+                computeDbSubLevel(sublevelLeft, dbSubLevelLeft);
+                computeDbSubLevel(sublevelRight, dbSubLevelRight);
+            }
+            else
+            {
+                computeDbSubLevel(sublevel, dbSubLevel);
+            }
 
-            using (Graphics g = spectrumPicture.CreateGraphics())
+            if (spectrumBitmap == null
+                || spectrumBitmap.Width != spectrumPicture.Width
+                || spectrumBitmap.Height != spectrumPicture.Height)
+            {
+                if (spectrumBitmap != null)
+                    spectrumBitmap.Dispose();
+                spectrumBitmap = new Bitmap(spectrumPicture.Width, spectrumPicture.Height);
+            }
+
+            // Erst vollständig in die Bitmap, dann in einem Zug auf den Bildschirm.
+            using (Graphics bg = Graphics.FromImage(spectrumBitmap))
             using (Brush b = new SolidBrush(spectrumActive))
             {
-                g.Clear(Color.Black);
+                bg.Clear(Color.Black);
 
-                int dx = (int)(spectrumPicture.Width / usedbands);
-                if (dx <= 0)
-                    dx = 1;
-
-                int sx = (int)((spectrumPicture.Width - (usedbands * dx)) / 2);
-
-                for (int i = 0; i < usedbands; i++)
+                if (stereoSpectrum)
                 {
-                    int from = i * maxbands / usedbands;
-                    int to = (i + 1) * maxbands / usedbands;
-
-                    double wert = 0;
-                    for (int n = from; n < to; n++)
-                    {
-                        wert = wert + sublevel[n];
-                    }
-                    wert = wert / (to - from);
-
-                    // Spectrum malen
-                    // Level2DB
-                    db = 20.0 * Math.Log10(wert * reglerSpectrum);
-
-                    // Werte von -60 bis 0
-
-                    int dbLimit = -50;
-                    if (db > dbLimit)
-                    {
-                        scaledDB = (int)(db * spectrumPicture.Height / dbLimit);
-
-                        g.FillRectangle(b, sx + i * dx, scaledDB, dx, spectrumPicture.Height - scaledDB);
-
-                        dbSubLevel[i] = 1 - Math.Abs(db / dbLimit);
-                        if (dbSubLevel[i] > 1)
-                            dbSubLevel[i] = 1;
-
-                        // for debugging
-                        if (i == 1 || i == 3 || i == 5 || i == 7)
-                        {
-                            if (dbSubLevel[i] > maxSpecVal)
-                                maxSpecVal = dbSubLevel[i];
-                        }
-                    }
-                    else
-                    {
-                        dbSubLevel[i] = 0;
-                    }
+                    // L in die obere, R in die untere Hälfte
+                    int half = spectrumBitmap.Height / 2;
+                    drawSpectrumChannel(bg, b, dbSubLevelLeft, 0, half);
+                    drawSpectrumChannel(bg, b, dbSubLevelRight, half, spectrumBitmap.Height - half);
                 }
+                else
+                {
+                    drawSpectrumChannel(bg, b, dbSubLevel, 0, spectrumBitmap.Height);
+                }
+            }
+
+            using (Graphics g = spectrumPicture.CreateGraphics())
+            {
+                g.DrawImageUnscaled(spectrumBitmap, 0, 0);
             }
             //if (dbSubLevel.Max() > debugV)
             //    debugV = dbSubLevel.Max();
             //g.DrawString(debugV.ToString("F2"),f,b,50,5);
 
-            OnSendSpectrum(dbSubLevel);
+            if (stereoSpectrum)
+            {
+                OnSendSpectrum(dbSubLevelLeft, ESpectrumChannel.Left);
+                OnSendSpectrum(dbSubLevelRight, ESpectrumChannel.Right);
+            }
+            else
+            {
+                OnSendSpectrum(dbSubLevel, ESpectrumChannel.Mono);
+            }
 
             //debugLabel.Text = dbSubLevel.Max().ToString();
+        }
+
+        /// <summary>
+        /// converts the subband levels into the normalized values sent to DMXControl
+        /// </summary>
+        private void computeDbSubLevel(double[] sublevel, double[] dbSubLevel)
+        {
+            const int dbLimit = -50;
+
+            for (int i = 0; i < usedbands; i++)
+            {
+                int from = i * maxbands / usedbands;
+                int to = (i + 1) * maxbands / usedbands;
+
+                double wert = 0;
+                for (int n = from; n < to; n++)
+                {
+                    wert = wert + sublevel[n];
+                }
+                wert = wert / (to - from);
+
+                // Level2DB, Werte von -60 bis 0
+                double db = 20.0 * Math.Log10(wert * reglerSpectrum);
+
+                if (db > dbLimit)
+                {
+                    // kein Math.Abs: bei db > 0 muss der Wert über 1 laufen, damit er
+                    // vom Limit unten auf 1 gezogen wird statt wieder abzufallen
+                    dbSubLevel[i] = 1 - db / dbLimit;
+                    if (dbSubLevel[i] > 1)
+                        dbSubLevel[i] = 1;
+
+                    // for debugging
+                    if (i == 1 || i == 3 || i == 5 || i == 7)
+                    {
+                        if (dbSubLevel[i] > maxSpecVal)
+                            maxSpecVal = dbSubLevel[i];
+                    }
+                }
+                else
+                {
+                    dbSubLevel[i] = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// draws the bars of one channel into a horizontal band of the picture
+        /// </summary>
+        private void drawSpectrumChannel(Graphics g, Brush b, double[] dbSubLevel, int top, int height)
+        {
+            int dx = (int)(spectrumBitmap.Width / usedbands);
+            if (dx <= 0)
+                dx = 1;
+
+            int sx = (int)((spectrumBitmap.Width - (usedbands * dx)) / 2);
+
+            for (int i = 0; i < usedbands; i++)
+            {
+                int scaledDB = (int)(height * (1 - dbSubLevel[i]));
+
+                g.FillRectangle(b, sx + i * dx, top + scaledDB, dx, height - scaledDB);
+            }
         }
 
         public int FFTFrequency2Index(int frequency) {

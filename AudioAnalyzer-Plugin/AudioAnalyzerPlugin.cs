@@ -119,6 +119,7 @@ namespace AudioAnalyzer
             c = new ManagedTreeItem("Spectrum");
             c.setValue("SubBands", pluginForm.subBandBox.SelectedIndex);
             c.setValue("SpecGain", pluginForm.gainSpectrumBar.Value);
+            c.setValue("StereoSpectrum", pluginForm.stereoSpectrumCheckBox.Checked);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Beat");
@@ -205,6 +206,12 @@ namespace AudioAnalyzer
 
             foreach (ManagedTreeItem i in m.GetChildren("Spectrum"))
             {
+                if (i.hasValue<bool>("StereoSpectrum"))
+                {
+                    pluginForm.stereoSpectrumCheckBox.Checked = i.getValue<bool>("StereoSpectrum");
+                    pluginForm.stereoSpectrum = i.getValue<bool>("StereoSpectrum");
+                }
+
                 if (i.hasValue<int>("SubBands"))
                 {
                     // gespeichert wird der Index der Combobox, nicht die Bandanzahl

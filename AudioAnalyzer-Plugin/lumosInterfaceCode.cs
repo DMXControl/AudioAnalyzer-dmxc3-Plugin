@@ -31,16 +31,16 @@ namespace AudioAnalyzer
                 SendLevel(this, new LevelEventArgs(volL, volR));
         }
 
-        private void OnSendSpectrum(double[] dbsubLevel)
+        private void OnSendSpectrum(double[] dbsubLevel, ESpectrumChannel channel)
         {
             if (SendSpectrum != null)
-                SendSpectrum(this, new SpectrumEventArgs(dbsubLevel));
+                SendSpectrum(this, new SpectrumEventArgs(dbsubLevel, channel));
         }
 
         public void OnSendSpectrumCount(int count)
         {
             if(SendSpectrumCount != null)
-                SendSpectrumCount(this, new SpectrumCountEventArgs(count));
+                SendSpectrumCount(this, new SpectrumCountEventArgs(count, stereoSpectrum));
         }
     }
 }

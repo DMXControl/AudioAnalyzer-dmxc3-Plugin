@@ -9,6 +9,7 @@ namespace AudioAnalyzer {
     class FFTCircularBuffer {
         private double[] _buffer;
         private Complex[] _fftBuffer;
+        private double[] _window;
         private int _m;
         private int _pos;
         private bool _isFull;
@@ -20,12 +21,26 @@ namespace AudioAnalyzer {
             _m = (int)Math.Log(fftLength, 2);
             _buffer = new double[fftLength];
             _fftBuffer = new Complex[fftLength];
+            // Das Fenster ist konstant, es je Aufruf neu zu berechnen kostet die Hälfte
+            // der gesamten FFT-Zeit (8192 Math.Cos pro Durchlauf)
+            _window = new double[fftLength];
+            for (int i = 0; i < fftLength; ++i) {
+                _window[i] = FastFourierTransform.HannWindow(i, fftLength);
+            }
             _pos = 0;
             _isFull = false;
         }
 
         bool IsPowerOfTwo(int x) {
             return (x & (x - 1)) == 0;
+        }
+
+        public void Reset() {
+            lock (_buffer) {
+                Array.Clear(_buffer, 0, _buffer.Length);
+                _pos = 0;
+                _isFull = false;
+            }
         }
 
         public void Add(float value) {
@@ -47,14 +62,14 @@ namespace AudioAnalyzer {
                 if (toEnd > 0) {
                     // From the current position to the end
                     for (int i = 0; i < toEnd; ++i) {
-                        fftBuffer[i].X = (float)(_buffer[_pos + i] * FastFourierTransform.HannWindow(i, _buffer.Length));
+                        fftBuffer[i].X = (float)(_buffer[_pos + i] * _window[i]);
                         fftBuffer[i].Y = 0;
                     }
                 }
                 if (_pos > 0) {
                     // From the start to the current position
                     for (int i = 0; i < _pos; ++i) {
-                        fftBuffer[toEnd + i].X = (float)(_buffer[i] * FastFourierTransform.HannWindow(toEnd + i, _buffer.Length));
+                        fftBuffer[toEnd + i].X = (float)(_buffer[i] * _window[toEnd + i]);
                         fftBuffer[toEnd + i].Y = 0;
                     }
                 }

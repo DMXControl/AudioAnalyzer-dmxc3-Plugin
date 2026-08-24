@@ -24,11 +24,15 @@ namespace AudioAnalyzer
         private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorLeft;
         private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorRight;
         private FFTCircularBuffer _fftBuffer;
+        private FFTCircularBuffer _fftBufferLeft;
+        private FFTCircularBuffer _fftBufferRight;
 
         internal bool running = false;
         private int fftLength = 8192;
         private int sampleRate = 48000; //44100;
         private float[] fft = new float[4096];
+        private float[] fftLeft = new float[4096];
+        private float[] fftRight = new float[4096];
 		private bool beat_detected;
 		private bool starting = false;
 		private float[] level = new float[2]; // for Level
@@ -61,6 +65,8 @@ namespace AudioAnalyzer
 
         internal int usedbands = 32;
 	    private double maxSpecVal = 0;
+        internal bool stereoSpectrum = false;
+        private Bitmap spectrumBitmap;
 
         #endregion
 
@@ -114,7 +120,11 @@ namespace AudioAnalyzer
 		private double[] subvariance;
 		private double[] subconstant;
 		private double[] sublevel;
+        private double[] sublevelLeft;
+        private double[] sublevelRight;
         private double[] dbSubLevel;
+        private double[] dbSubLevelLeft;
+        private double[] dbSubLevelRight;
         private int[,] subbands;
         private double minenergy = 1.0E-12;
         private double minsubenergy = 1.0E-14;

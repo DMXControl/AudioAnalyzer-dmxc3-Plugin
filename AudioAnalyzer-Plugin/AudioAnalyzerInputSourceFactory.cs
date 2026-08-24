@@ -20,6 +20,7 @@ namespace AudioAnalyzer
         private readonly EventHandler<LevelEventArgs> _sendLevelDelegate;
 
         private readonly List<AASpectrumSource> _spectrum = new List<AASpectrumSource>();
+        private readonly List<AASpectrumSource> _spectrumRight = new List<AASpectrumSource>();
         private AAVolumeSource volL, volR;
         private AABeatSource beat;
 
@@ -58,12 +59,7 @@ namespace AudioAnalyzer
                 InputManager.getInstance().RegisterSource(volL);
                 InputManager.getInstance().RegisterSource(volR);
 
-                for (int i = 1; i <= 32; i++)
-                {
-                    var s = new AASpectrumSource(i);
-                    this._spectrum.Add(s);
-                }
-                InputManager.getInstance().RegisterSources(this._spectrum);
+                SyncSpectrumSources(_form.usedbands, _form.stereoSpectrum);
             });
         }
 
@@ -81,37 +77,65 @@ namespace AudioAnalyzer
                 volL = null;
                 volR = null;
                 _spectrum.Clear();
+                _spectrumRight.Clear();
             });
         }
 
         private void UpdateSpectrumInputs(object sender, SpectrumCountEventArgs args)
         {
-            if (args.Count >= _spectrum.Count)
+            SyncSpectrumSources(args.Count, args.Stereo);
+        }
+
+        /// <summary>
+        /// brings the registered spectrum sources in line with band count and stereo mode.
+        /// In stereo mode the existing set carries the left channel and only renames itself,
+        /// so just one additional set is needed instead of two - that saves a third of the
+        /// value updates compared to keeping a separate downmix alongside L and R.
+        /// </summary>
+        private void SyncSpectrumSources(int count, bool stereo)
+        {
+            // Vorhandene Quellen zuerst umbenennen
+            foreach (var s in _spectrum)
             {
-                for (int i = _spectrum.Count + 1; i <= args.Count; i++)
-                {
-                    var s = new AASpectrumSource(i);
-                    this._spectrum.Add(s);
-                    InputManager.getInstance().RegisterSource(s);
-                }
+                s.SetStereoNaming(stereo);
             }
-            else if (args.Count < _spectrum.Count)
+
+            SyncSpectrumChannel(_spectrum, ESpectrumChannel.Mono, count, stereo);
+            SyncSpectrumChannel(_spectrumRight, ESpectrumChannel.Right, stereo ? count : 0, stereo);
+        }
+
+        private void SyncSpectrumChannel(List<AASpectrumSource> sources, ESpectrumChannel channel, int count, bool stereo)
+        {
+            if (count > sources.Count)
             {
-                do
+                var added = new List<AASpectrumSource>();
+                for (int i = sources.Count + 1; i <= count; i++)
                 {
-                    int i = _spectrum.Count - 1;
-                    var x = _spectrum[i];
-                    InputManager.getInstance().UnregisterSource(x);
-                    _spectrum.RemoveAt(i);
-                } while (args.Count < _spectrum.Count);
+                    var s = new AASpectrumSource(i, channel, stereo);
+                    sources.Add(s);
+                    added.Add(s);
+                }
+                InputManager.getInstance().RegisterSources(added);
+            }
+            else if (count < sources.Count)
+            {
+                var removed = sources.GetRange(count, sources.Count - count);
+                sources.RemoveRange(count, sources.Count - count);
+                InputManager.getInstance().UnregisterSources(removed);
             }
         }
 
         private void UpdateSpectrum(object sender, SpectrumEventArgs args)
         {
-            for (int index = 0; index < args.SubLevel.Length && index < _spectrum.Count; index++)
+            // Mono und Left landen im selben Satz: im Stereo-Modus tragen diese Quellen
+            // den linken Kanal, sonst den Downmix
+            List<AASpectrumSource> sources = args.Channel == ESpectrumChannel.Right
+                ? _spectrumRight
+                : _spectrum;
+
+            for (int index = 0; index < args.SubLevel.Length && index < sources.Count; index++)
             {
-                _spectrum[index].SetLevel(args.SubLevel[index]);
+                sources[index].SetLevel(args.SubLevel[index]);
             }
         }
 
