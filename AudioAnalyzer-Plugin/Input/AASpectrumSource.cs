@@ -24,6 +24,7 @@ namespace AudioAnalyzer.Input
         private const string LeftName = "Spectrum L";
 
         private bool stereoNaming;
+        private string bandRange;
         private ParameterCategory leftCategory;
 
         /// <summary>
@@ -62,9 +63,25 @@ namespace AudioAnalyzer.Input
             OnPropertyChanged(new PropertyChangedEventArgs(null));
         }
 
+        /// <summary>
+        /// sets the frequency range shown in the label, e.g. "80-113 Hz". Only the display
+        /// name changes - the ID stays the same, so assignments are unaffected.
+        /// </summary>
+        public void SetBandRange(string range)
+        {
+            if (String.Equals(bandRange, range))
+                return;
+
+            bandRange = range;
+            OnPropertyChanged(new PropertyChangedEventArgs(null));
+        }
+
         protected override string DisplayNameHook()
         {
-            return stereoNaming ? LeftName + " " + Number : null;
+            string name = (stereoNaming ? LeftName : displayName(Channel)) + " " + Number;
+            if (!String.IsNullOrEmpty(bandRange))
+                name += " (" + bandRange + ")";
+            return name;
         }
 
         protected override ParameterCategory CategoryHook()

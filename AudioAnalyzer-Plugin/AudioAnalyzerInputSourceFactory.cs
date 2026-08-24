@@ -102,6 +102,18 @@ namespace AudioAnalyzer
 
             SyncSpectrumChannel(_spectrum, ESpectrumChannel.Mono, count, stereo);
             SyncSpectrumChannel(_spectrumRight, ESpectrumChannel.Right, stereo ? count : 0, stereo);
+
+            // Die Bereiche im Label hängen an der Bandanzahl, müssen also mitgezogen werden
+            UpdateBandRanges(_spectrum);
+            UpdateBandRanges(_spectrumRight);
+        }
+
+        private void UpdateBandRanges(List<AASpectrumSource> sources)
+        {
+            foreach (var s in sources)
+            {
+                s.SetBandRange(_form.getBandRangeLabel(s.Number));
+            }
         }
 
         private void SyncSpectrumChannel(List<AASpectrumSource> sources, ESpectrumChannel channel, int count, bool stereo)
@@ -112,6 +124,7 @@ namespace AudioAnalyzer
                 for (int i = sources.Count + 1; i <= count; i++)
                 {
                     var s = new AASpectrumSource(i, channel, stereo);
+                    s.SetBandRange(_form.getBandRangeLabel(i));
                     sources.Add(s);
                     added.Add(s);
                 }
