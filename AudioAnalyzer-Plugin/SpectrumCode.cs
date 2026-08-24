@@ -114,57 +114,57 @@ namespace AudioAnalyzer
             double db;
             int scaledDB;
 
-            Graphics g = spectrumPicture.CreateGraphics();
-            g.Clear(Color.Black);
-
-            int dx = (int)(spectrumPicture.Width / usedbands);
-            if (dx <= 0)
-                dx = 1;
-
-            int sx = (int)((spectrumPicture.Width - (usedbands * dx)) / 2);
-            Brush b = new SolidBrush(spectrumActive);
-            Pen p = new Pen(spectrumLineActive);
-            Font f = new Font("Verdana", 8);
-
-            int n = 0;
-            for (int i = 0; i < usedbands; i++)
+            using (Graphics g = spectrumPicture.CreateGraphics())
+            using (Brush b = new SolidBrush(spectrumActive))
             {
-                double wert = 0;
+                g.Clear(Color.Black);
 
-                for (int j = 0; j < maxbands / usedbands; j++)
+                int dx = (int)(spectrumPicture.Width / usedbands);
+                if (dx <= 0)
+                    dx = 1;
+
+                int sx = (int)((spectrumPicture.Width - (usedbands * dx)) / 2);
+
+                for (int i = 0; i < usedbands; i++)
                 {
-                    wert = wert + sublevel[n];
-                }
-                wert = wert / (maxbands / usedbands);
-                n++;
+                    int from = i * maxbands / usedbands;
+                    int to = (i + 1) * maxbands / usedbands;
 
-                // Spectrum malen
-                // Level2DB
-                db = 20.0 * Math.Log10(wert * reglerSpectrum);
-
-                // Werte von -60 bis 0
-
-                int dbLimit = -50;
-                if (db > dbLimit)
-                {
-                    scaledDB = (int)(db * spectrumPicture.Height / dbLimit);
-
-                    g.FillRectangle(b, sx + i * dx, scaledDB, dx, spectrumPicture.Height - scaledDB);
-
-                    dbSubLevel[i] = 1 - Math.Abs(db / dbLimit);
-                    if (dbSubLevel[i] > 1)
-                        dbSubLevel[i] = 1;
-
-                    // for debugging
-                    if (i == 1 || i == 3 || i == 5 || i == 7)
+                    double wert = 0;
+                    for (int n = from; n < to; n++)
                     {
-                        if (dbSubLevel[i] > maxSpecVal)
-                            maxSpecVal = dbSubLevel[i];
+                        wert = wert + sublevel[n];
                     }
-                }
-                else
-                {
-                    dbSubLevel[i] = 0;
+                    wert = wert / (to - from);
+
+                    // Spectrum malen
+                    // Level2DB
+                    db = 20.0 * Math.Log10(wert * reglerSpectrum);
+
+                    // Werte von -60 bis 0
+
+                    int dbLimit = -50;
+                    if (db > dbLimit)
+                    {
+                        scaledDB = (int)(db * spectrumPicture.Height / dbLimit);
+
+                        g.FillRectangle(b, sx + i * dx, scaledDB, dx, spectrumPicture.Height - scaledDB);
+
+                        dbSubLevel[i] = 1 - Math.Abs(db / dbLimit);
+                        if (dbSubLevel[i] > 1)
+                            dbSubLevel[i] = 1;
+
+                        // for debugging
+                        if (i == 1 || i == 3 || i == 5 || i == 7)
+                        {
+                            if (dbSubLevel[i] > maxSpecVal)
+                                maxSpecVal = dbSubLevel[i];
+                        }
+                    }
+                    else
+                    {
+                        dbSubLevel[i] = 0;
+                    }
                 }
             }
             //if (dbSubLevel.Max() > debugV)

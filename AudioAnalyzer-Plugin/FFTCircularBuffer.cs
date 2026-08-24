@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 namespace AudioAnalyzer {
     class FFTCircularBuffer {
         private double[] _buffer;
+        private Complex[] _fftBuffer;
         private int _m;
         private int _pos;
         private bool _isFull;
@@ -18,6 +19,7 @@ namespace AudioAnalyzer {
             }
             _m = (int)Math.Log(fftLength, 2);
             _buffer = new double[fftLength];
+            _fftBuffer = new Complex[fftLength];
             _pos = 0;
             _isFull = false;
         }
@@ -38,7 +40,7 @@ namespace AudioAnalyzer {
 
         public bool CalculateFft(in float[] fft) {
             if (!_isFull) return false;
-            Complex[] fftBuffer = new Complex[_buffer.Length];
+            Complex[] fftBuffer = _fftBuffer;
 
             lock (_buffer) {
                 int toEnd = _isFull ? (_buffer.Length - _pos) : 0;

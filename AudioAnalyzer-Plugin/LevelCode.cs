@@ -51,15 +51,16 @@ namespace AudioAnalyzer
 
 			// Zeichnen des Levels ...
 
-			Graphics g1 = levelLBox.CreateGraphics();
-			Graphics g2 = levelRBox.CreateGraphics();
-			g1.Clear(Color.Black);
-			g2.Clear(Color.Black);
+			using (Graphics g1 = levelLBox.CreateGraphics())
+			using (Graphics g2 = levelRBox.CreateGraphics())
+			using (Brush b = new SolidBrush(levelActive))
+			{
+				g1.Clear(Color.Black);
+				g2.Clear(Color.Black);
 
-			Brush b = new SolidBrush(levelActive);
-
-			g1.FillRectangle(b, 0, 0, volL, levelLBox.Height);
-			g2.FillRectangle(b, 0, 0, volR, levelRBox.Height);
+				g1.FillRectangle(b, 0, 0, volL, levelLBox.Height);
+				g2.FillRectangle(b, 0, 0, volR, levelRBox.Height);
+			}
 
             OnSendLevel(outLevel[0], outLevel[1]);
 		}

@@ -364,54 +364,54 @@ namespace AudioAnalyzer
         /// <param name="init"></param>
         private void drawMoodPicture(bool init)
         {
-            Graphics g = moodPictureBox.CreateGraphics();
-            Graphics bg = Graphics.FromImage(moodBitmap);
-            Brush b = new SolidBrush(Color.Yellow);
-            Pen p0 = new Pen(Color.Black);
-            Pen p1 = new Pen(Color.Blue);
-            Pen p2 = new Pen(Color.LawnGreen);
-            Pen p3 = new Pen(Color.OrangeRed);
-            Pen p4 = new Pen(Color.White);
-
-            Font f = new Font("Verdana", 8);
-
-            if (init)
+            using (Graphics g = moodPictureBox.CreateGraphics())
+            using (Graphics bg = Graphics.FromImage(moodBitmap))
             {
-                bg.Clear(Color.Black);
-                bg.Flush();
-                g.DrawImageUnscaled(moodBitmap, 0, 0);
-            }
-            else
-            {
-                g.Clear(Color.Black);
-
-                //bg.DrawImageUnscaled(moodBitmap, 1, 0);
-                bg.DrawImageUnscaled(moodBitmap, -1, 0);
-
-                //bg.TranslateTransform(1,0);
-                int vscale = 1;
-
-                int yoff = (moodBitmap.Height - (maxbands * vscale)) / 2;
-                if (yoff < 1)
-                    yoff = 1;
-
-                for (int i = 0; i < maxbands; i++)
+                if (init)
                 {
-                    if (subenergy[i] < 0.000001)
-                        bg.DrawLine(p0, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
-                    else if (subenergy[i] < 0.000005)
-                        bg.DrawLine(p1, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
-                    else if (subenergy[i] < 0.00001)
-                        bg.DrawLine(p2, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
-                    else if (subenergy[i] < 0.00005)
-                        bg.DrawLine(p3, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
-                    else
-                        bg.DrawLine(p4, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
+                    bg.Clear(Color.Black);
+                    bg.Flush();
+                    g.DrawImageUnscaled(moodBitmap, 0, 0);
                 }
+                else
+                {
+                    g.Clear(Color.Black);
 
-                bg.Flush();
+                    //bg.DrawImageUnscaled(moodBitmap, 1, 0);
+                    bg.DrawImageUnscaled(moodBitmap, -1, 0);
 
-                g.DrawImageUnscaled(moodBitmap, 0, 0);
+                    //bg.TranslateTransform(1,0);
+                    int vscale = 1;
+
+                    int yoff = (moodBitmap.Height - (maxbands * vscale)) / 2;
+                    if (yoff < 1)
+                        yoff = 1;
+
+                    using (Pen p0 = new Pen(Color.Black))
+                    using (Pen p1 = new Pen(Color.Blue))
+                    using (Pen p2 = new Pen(Color.LawnGreen))
+                    using (Pen p3 = new Pen(Color.OrangeRed))
+                    using (Pen p4 = new Pen(Color.White))
+                    {
+                        for (int i = 0; i < maxbands; i++)
+                        {
+                            if (subenergy[i] < 0.000001)
+                                bg.DrawLine(p0, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
+                            else if (subenergy[i] < 0.000005)
+                                bg.DrawLine(p1, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
+                            else if (subenergy[i] < 0.00001)
+                                bg.DrawLine(p2, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
+                            else if (subenergy[i] < 0.00005)
+                                bg.DrawLine(p3, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
+                            else
+                                bg.DrawLine(p4, moodBitmap.Width - 1, moodBitmap.Height - yoff - (i * vscale), moodBitmap.Width - 1, moodBitmap.Height - yoff - ((i * vscale) + 1));
+                        }
+                    }
+
+                    bg.Flush();
+
+                    g.DrawImageUnscaled(moodBitmap, 0, 0);
+                }
             }
         }
 
