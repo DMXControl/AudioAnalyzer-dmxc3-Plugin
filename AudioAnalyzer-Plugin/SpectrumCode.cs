@@ -20,7 +20,9 @@ namespace AudioAnalyzer
         {
             bool wasActive = false;
 
-            startBand = FFTFrequency2Index((int)E2);
+            // startBand indiziert tones/subbands, nicht fft: E2 bis Eb10 ergibt
+            // startBand + maxbands == tones.Length
+            startBand = Array.IndexOf(tones, E2);
 
             if (beatclearTimer != null)
             {

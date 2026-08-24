@@ -42,7 +42,7 @@ namespace AudioAnalyzer
                     outLevel[1] = levelhistory[1, 2];
                 if (levelhistory[1, 1] > outLevel[1])
                     outLevel[1] = levelhistory[1, 1];
-                if (levelhistory[0, 0] > outLevel[0])
+                if (levelhistory[1, 0] > outLevel[1])
                     outLevel[1] = levelhistory[1, 0];
             }
 
