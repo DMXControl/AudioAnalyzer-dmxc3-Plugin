@@ -9,25 +9,17 @@ using System.Diagnostics;
 
 namespace AudioAnalyzer
 {
-	public partial class audioAnalysForm
+	public partial class AudioAnalyzerEngine
 	{
 
 		internal void newBPM()
 		{
-            if (MaxBPM >= 30 && MaxBPM <=300)
-    		    maxBPMBar.Value = (int)MaxBPM;
+            if (maxBpmEffective >= 30 && maxBpmEffective <= 300)
+    		    maxBpmValue = (int)maxBpmEffective;
 
-            if (maxBpmOn)
-			{
-				maxBPMCheckBox.Text = "max. BPM = " + MaxBPM;
-			}
-			else
-			{
-				maxBPMCheckBox.Text = "max BPM = no limit";
-			}
             if (beatclearTimer != null)
             {
-                beatclearTimer.Interval = (int)(60000 / MaxBPM);
+                beatclearTimer.Interval = (int)(60000 / maxBpmEffective);
             }
 		}
 

@@ -13,21 +13,41 @@ using NAudio.Utils;
 
 namespace AudioAnalyzer
 {
-	public partial class audioAnalysForm
+	public partial class AudioAnalyzerEngine
 	{
+        private static readonly LumosLIB.Kernel.Log.ILumosLog log
+            = LumosLIB.Kernel.Log.LumosLogger.getInstance(typeof(AudioAnalyzerEngine));
+
 		// LOCAL VARS
 		private AbstractSoundSource audioStream = null;
         // Wunschauswahl aus dem Projekt. Die Geräteliste entsteht erst in Load, deshalb
         // wird hier gemerkt und dort angewendet.
         private string wantedDeviceId = null;
         private int wantedInputChannel = 0;
+
+        private readonly List<AbstractSoundSource> deviceList = new List<AbstractSoundSource>();
+        private int selectedDeviceIndex = -1;
+        private readonly List<string> inputChannelNames = new List<string>();
+        private int selectedInputChannelIndex = -1;
         private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorLeft;
         private LumosLIB.Tools.FastFourierTransform.SampleAggregator _aggregatorRight;
         private FFTCircularBuffer _fftBuffer;
         private FFTCircularBuffer _fftBufferLeft;
         private FFTCircularBuffer _fftBufferRight;
 
-        internal bool running = false;
+        private bool _running = false;
+        internal bool running
+        {
+            get { return _running; }
+            set
+            {
+                if (_running == value)
+                    return;
+
+                _running = value;
+                OnRunningChanged();
+            }
+        }
         private int fftLength = 8192;
         private int sampleRate = 48000; //44100;
         private float[] fft = new float[4096];
@@ -36,26 +56,29 @@ namespace AudioAnalyzer
 		private bool beat_detected;
 		private bool starting = false;
 		private float[] level = new float[2]; // for Level
-        private float peakHoldTime = 0.02f;
+        /// <summary>
+        /// Samples je Aufruf von ComputeLevel. ComputeLevel haengt am SampleAggregator,
+        /// nicht am 20-ms-Timer - deshalb ist das die Umrechnungsbasis fuer die Haltezeit.
+        /// </summary>
+        private const int aggregatorNotificationCount = 1024;
+        private float peakHoldTime = 0.1f;
         private float[,] levelhistory = new float[2, 4] { { 0.0F, 0.0F, 0.0F, 0.0F }, { 0.0F, 0.0F, 0.0F, 0.0F } }; // for Level history
         internal bool peakHold = false; // for Level
         int[] peakWait = new int[2] { 0, 0 }; // for Level
-        int peakWaitMax = 5; // for Level PeakHold = 5x20ms = 0.1s
+        int peakWaitMax = 5; // aus peakHoldTime berechnet, siehe updatePeakHoldSteps()
         internal double reglerSpectrum = 1;	// for Spectrum (0,5 - 3)
 		private int beatInterval = 20; // 20ms
 		private Timer beatTimer = null;
 		private Timer beatclearTimer = null;
-		private Timer beatclearTimer2 = null;
 		private Timer startTimer = null;
 //        private Timer infoTimer = null;
-        private Color beatActive = Color.Red;
-        private Color forecastBeatActive = Color.LightBlue;
-        private Color levelActive = Color.PaleVioletRed;
-		private Color spectrumActive = Color.SpringGreen;
-		private Color spectrumLineActive = Color.Yellow;
-		private Color beatPassive = Color.Black;
 //		private string[] inputs;
-		internal double MaxBPM = 200;
+        /// <summary>
+        /// Wirksame Obergrenze: der Reglerwert, oder 1000 wenn die Begrenzung aus ist.
+        /// Hiess MaxBPM - zu nah an der Eigenschaft MaxBpm der Schnittstelle, die den
+        /// Reglerwert fuehrt und nicht diesen abgeleiteten Wert.
+        /// </summary>
+        internal double maxBpmEffective = 200;
 
         private int startBand;
         private int maxbands = 96;     // E2 bis Eb10, 82Hz - 19912Hz
@@ -63,10 +86,9 @@ namespace AudioAnalyzer
 
         #region spectrum;
 
-        internal int usedbands = 32;
+        private int usedbands = 32;
 	    private double maxSpecVal = 0;
-        internal bool stereoSpectrum = false;
-        private Bitmap spectrumBitmap;
+        private bool stereoSpectrum = false;
 
         #endregion
 
@@ -147,12 +169,6 @@ namespace AudioAnalyzer
         private int midBpm;
 	    internal bool halfSpeed = false;
 	    internal bool doubleSpeed = false;
-        private Color bpmFont = Color.Blue;
-        private Color bpmGrid = Color.DarkBlue;
-        private Color bpmBar = Color.Yellow;
-        private Color bpmBPM = Color.Red;
-        private Color bpmRange = Color.DarkGreen;
-        private Color bpmLimit = Color.SpringGreen;
 
         # endregion statistics
 
@@ -179,20 +195,15 @@ namespace AudioAnalyzer
         {
             noRhythm,fourQuarter,threeQuarter,twoQuarter,bluesRhythm,fiveQuarter
         }
-        private string[] rhythmNames = new string[6] {"no Rythm", "four quarters", "three quarters", "two quarters", "Blues Rhythm", "five quarters"};
+        private string[] rhythmNames = new string[6] {"No rhythm", "Four quarters", "Three quarters", "Two quarters", "Blues rhythm", "Five quarters"};
 
         private Timer mainBeatTimer;
         private Timer subBeatTimer;
         private Timer tapTimeout;
         private System.Diagnostics.Stopwatch tapWatch;
         private int numberOfSubbeats = 3;
-        private int numberOfDrawnBeats = 8;
-        private int drawnBeatsCount = 0;
         private int subbeatCount = 0;
 
-        private Color mainBeatColor = Color.Yellow;
-        private Color subBeatColor = Color.Orange;
-        private Color formBackColor;
 
         private int tapCount;
         private long lastTap;
@@ -200,99 +211,34 @@ namespace AudioAnalyzer
 
         # endregion generator
 
-        #region mood
+        #region Settings
 
-        private long actualTime;
+        private int mainGainValue = 50;         // gainBar,          0..100
+        private int vuGainValue = 50;           // gainVUBar,        0..100
+        private int spectrumGainValue = 50;     // gainSpectrumBar,  0..100
+        private int peakHoldTimeMs = 100;       // PeakHoldBar,     25..500
+        private int sensitivityValue = 50;      // sensitivityBar,   0..100
+        private int forecastCountValue = 16;    // numberOfBeatsBar, 0..100
+        private int maxBpmValue = 240;          // maxBPMBar,       30..330
 
-        private Bitmap moodBitmap;
+        internal const int GainMin = 0, GainMax = 100;
+        internal const int PeakHoldTimeMin = 25, PeakHoldTimeMax = 500;
+        internal const int SensitivityMin = 0, SensitivityMax = 100;
+        internal const int ForecastCountMin = 0, ForecastCountMax = 100;
+        internal const int MaxBpmMin = 30, MaxBpmMax = 330;
+        internal const int GeneratorBpmMin = 1, GeneratorBpmMax = 300;
 
-        private double tempo = 0.5;         // 0=slow, 1=fast
-        private double mainMood = 0.5;      // 0=sad, 1=happy
-
-        public struct Tone
-        {
-            public int band;
-            public double amplitude;
-            public double frequency;
-        }
-
-        public struct historyEntry
-        {
-            public long time;
-            public double[] maxima;
-            public bool beat;
-            public int basetone;
-            public int chord;
-        }
-
-        private int memoryLength = 8;
-        private double maximumToneVariance = 0.1;
-        private double maximumChordVariance = 0.05;
-        private List<Tone> maximumsList;
-        //private int maximums = 10;
-
-        private int binsToIncrease = 1;
-        private int binsToDecrease = 1;
-        private double increaseThreshhold = 0.00375;
-        private double decreaseThreshhold = 0.00375;
-
-        private double baseToneFreq = 0;
-        private string baseToneName = "";
-        private int baseToneMidi = 0;
-        private int noBaseToneCount = 0;
-
-
-        private int baseChord = -1;     //  0-11 = Cmajor to Bmajor
-        // 12-23 = Cminor to Bminor
-        // 24-35 = Cmajor7 to Bmajor7
-        // 36-47 = Cminor7 to Bminor7
-        private string baseChordName = "";
-        private int noChordCount = 0;
-
-        private int[] baseToneMemory;
-        private int[] baseChordMemory;
-
-        private Queue<historyEntry> analysisHistory;
- 
-	    #endregion
-
-        #region chords
-
-        // reference PCPs for C, Cm, C7, Cm7
-        private double[,] PCPref = new double[4, 12]
-	                                   {
-	                                       {1.00, 0.00, 0.03, 0.04, 0.30, 0.17, 0.00, 0.39, 0.03, 0.16, 0.07, 0.02},
-	                                       {1.00, 0.10, 0.14, 0.30, 0.08, 0.24, 0.08, 0.35, 0.38, 0.00, 0.08, 0.18},
-	                                       {1.00, 0.00, 0.03, 0.04, 0.30, 0.17, 0.00, 0.39, 0.03, 0.16, 0.48, 0.02},
-	                                       {1.00, 0.10, 0.14, 0.30, 0.08, 0.24, 0.08, 0.30, 0.26, 0.00, 0.48, 0.04}
-	                                   };
-
-        // theoretical reference PCPs for C, Cm, C7, Cm7
-        private double[,] PCPrefT = new double[4, 12]
-	                                   {
-	                                       {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0},
-	                                       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0},
-	                                       {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0},
-	                                       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0}
-	                                   };
-
-        private double[] PCPactual = new double[12];
+        private static readonly string[] beatAlgorithmNames = new string[4] {
+            "Standard weight method",
+            "Simple sound energy",
+            "Frequency selected sound energy",
+            "Automatic" };
+        private static readonly int[] bandCounts = new int[5] { 8, 16, 32, 64, 96 };
 
         #endregion
 
         #region tones
 
-        // Tonabstände
-        private double prime = 1.0;
-        private double sekunde = 9.0 / 8;
-        private double kleineTerz = 6.0 / 5;
-        private double grosseTerz = 5.0 / 4;
-        private double quarte = 4.0 / 3;
-        private double kleineSexte = 8.0 / 5;
-        private double grosseSexte = 5.0 / 3;
-        private double kleineSeptime = 9.0 / 5;
-        private double grosseSeptime = 15.0 / 8;
-        private double oktave = 2.0;
 
         // Tonfrequenzen
         private const double A0 = 27.5;

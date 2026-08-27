@@ -1,10 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net48</TargetFramework>
 		<OutputType>Library</OutputType>
 		<RootNamespace>AudioAnalyzer</RootNamespace>
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<UseWindowsForms>true</UseWindowsForms>
+		<UseWPF>true</UseWPF>
 		<ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
 	</PropertyGroup>
 	<PropertyGroup>
@@ -17,34 +18,59 @@
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 	</PropertyGroup>
 	<ItemGroup>
+		<Reference Include="WindowsFormsIntegration" />
 		<Reference Include="LumosGUI">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosGUI.exe</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosGUI\bin\Debug')">..\..\Lumos\3.3\LumosGUI\bin\Debug\LumosGUI.exe</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\LumosGUI\bin\Debug')">..\..\Lumos\LumosGUI\bin\Debug\LumosGUI.exe</HintPath>
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosGUI.exe</HintPath>
 			<Private>True</Private>
 		</Reference>
 		<Reference Include="LumosControls">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosControls.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosControls\bin\Debug')">..\..\Lumos\3.3\LumosControls\bin\Release\LumosControls.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\LumosControls\bin\Debug')">..\..\Lumos\LumosControls\bin\Debug\LumosControls.dll</HintPath>
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosControls.dll</HintPath>
 			<Private>True</Private>
 		</Reference>
 		<Reference Include="LumosProtobuf">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosProtobuf.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosProtobuf\csharp\bin\Debug\netstandard2.0')">..\..\Lumos\3.3\LumosProtobuf\csharp\bin\Debug\netstandard2.0\LumosProtobuf.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\LumosProtobuf\csharp\bin\Debug\netstandard2.0')">..\..\Lumos\LumosProtobuf\csharp\bin\Debug\netstandard2.0\LumosProtobuf.dll</HintPath>
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosProtobuf.dll</HintPath>
 			<Private>True</Private>
 		</Reference>
 		<Reference Include="LumosLIB">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosLIB.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosLIB\bin\Debug\netstandard2.0')">..\..\Lumos\3.3\LumosLIB\bin\Debug\netstandard2.0\LumosLIB.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\LumosLIB\bin\Debug\netstandard2.0')">..\..\Lumos\LumosLIB\bin\Debug\netstandard2.0\LumosLIB.dll</HintPath>
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosLIB.dll</HintPath>
 			<Private>True</Private>
 		</Reference>
 		<Reference Include="LumosToolsLIB">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosToolsLIB.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosToolsLIB\bin\Debug\netstandard2.0')">..\..\Lumos\3.3\LumosToolsLIB\bin\Debug\netstandard2.0\LumosToolsLIB.dll</HintPath>
 			<HintPath Condition="Exists('..\..\Lumos\LumosToolsLIB\bin\Debug\netstandard2.0')">..\..\Lumos\LumosToolsLIB\bin\Debug\netstandard2.0\LumosToolsLIB.dll</HintPath>
 			<HintPath Condition="Exists('..\dep')">..\dep\LumosToolsLIB.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="LumosControlsWPF">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosControlsWPF.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosControlsWPF\bin\Debug')">..\..\Lumos\3.3\LumosControlsWPF\bin\Release\LumosControlsWPF.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosControlsWPF\bin\Debug')">..\..\Lumos\LumosControlsWPF\bin\Debug\LumosControlsWPF.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosControlsWPF.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="LumosToolsLIB.WPF">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\LumosToolsLIB.WPF.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\3.3\LumosToolsLIB.WPF\bin\Debug')">..\..\Lumos\3.3\LumosToolsLIB.WPF\bin\Release\LumosToolsLIB.WPF.dll</HintPath>
+			<HintPath Condition="Exists('..\..\Lumos\LumosToolsLIB.WPF\bin\Debug')">..\..\Lumos\LumosToolsLIB.WPF\bin\Debug\LumosToolsLIB.WPF.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\LumosToolsLIB.WPF.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+		<Reference Include="CommunityToolkit.Mvvm">
+			<HintPath Condition="Exists('$(MSBuildProgramFiles32)\DMXControl3\GUI')">$(MSBuildProgramFiles32)\DMXControl3\GUI\CommunityToolkit.Mvvm.dll</HintPath>
+			<HintPath Condition="Exists('..\dep')">..\dep\CommunityToolkit.Mvvm.dll</HintPath>
 			<Private>True</Private>
 		</Reference>
 	</ItemGroup>
@@ -77,12 +103,6 @@
 		<EmbeddedResource Update="Properties\Resources.resx">
 			<Generator>ResXFileCodeGenerator</Generator>
 			<LastGenOutput>Resources.Designer.cs</LastGenOutput>
-		</EmbeddedResource>
-	</ItemGroup>
-	<ItemGroup>
-		<EmbeddedResource Update="AudioAnalyze.resx">
-			<DependentUpon>AudioAnalyze.cs</DependentUpon>
-			<SubType>Designer</SubType>
 		</EmbeddedResource>
 	</ItemGroup>
 	<PropertyGroup>

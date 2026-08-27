@@ -1,46 +1,85 @@
 ﻿using System;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Collections.Generic;
-using System.Windows.Forms;
-using System.Runtime.InteropServices;
-using System.Diagnostics;
 using AudioAnalyzer.AAEventArgs;
 
 
 namespace AudioAnalyzer
 {
-    public partial class audioAnalysForm
+    public partial class AudioAnalyzerEngine
     {
-        internal event EventHandler<BeatEventArgs> SendBeat;
-        internal event EventHandler<LevelEventArgs> SendLevel;
-        internal event EventHandler<SpectrumEventArgs> SendSpectrum;
-        internal event EventHandler<SpectrumCountEventArgs> SendSpectrumCount;
 
-        private void OnSendBeat(int majorMinor)
+        public event EventHandler<BeatEventArgs> BeatDetected;
+        public event EventHandler<LevelEventArgs> LevelChanged;
+        public event EventHandler<SpectrumEventArgs> SpectrumChanged;
+
+        /// <summary>band count or stereo mode changed, the band layout has to be rebuilt</summary>
+        public event EventHandler<SpectrumCountEventArgs> SpectrumLayoutChanged;
+
+        /// <summary>
+        /// Raised whenever the tempo shown to the user changes - detected, generated or
+        /// reset. Without this the GUI would have to poll, and a reset would go unnoticed.
+        /// </summary>
+        public event EventHandler BpmChanged;
+
+        /// <summary>
+        /// Raised when a setting was changed somewhere else, so a second surface can follow.
+        /// </summary>
+        public event EventHandler SettingsChanged;
+
+        /// <summary>Raised when the analysis or the generator starts or stops.</summary>
+        public event EventHandler RunningChanged;
+
+        /// <summary>
+        /// Raised once the device list exists. Enumerating it is slow enough that a remote
+        /// kernel would deliver it asynchronously, so nobody may assume it is there already.
+        /// </summary>
+        public event EventHandler DevicesChanged;
+
+        private void OnBeatDetected(int majorMinor, EBeatSource source)
         {
-            if (SendBeat != null)
-                SendBeat(this, new BeatEventArgs(majorMinor));
+            if (BeatDetected != null)
+                BeatDetected(this, new BeatEventArgs(majorMinor, source));
         }
 
-        private void OnSendLevel(float volL, float volR)
+        private void OnLevelChanged(float volL, float volR)
         {
-            if (SendLevel != null)
-                SendLevel(this, new LevelEventArgs(volL, volR));
+            if (LevelChanged != null)
+                LevelChanged(this, new LevelEventArgs(volL, volR));
         }
 
-        private void OnSendSpectrum(double[] dbsubLevel, ESpectrumChannel channel)
+        private void OnSpectrumChanged(double[] dbsubLevel, ESpectrumChannel channel)
         {
-            if (SendSpectrum != null)
-                SendSpectrum(this, new SpectrumEventArgs(dbsubLevel, channel));
+            if (SpectrumChanged != null)
+                SpectrumChanged(this, new SpectrumEventArgs(dbsubLevel, channel));
         }
 
-        public void OnSendSpectrumCount(int count)
+        private void OnSpectrumLayoutChanged(int count)
         {
-            if(SendSpectrumCount != null)
-                SendSpectrumCount(this, new SpectrumCountEventArgs(count, stereoSpectrum));
+            if (SpectrumLayoutChanged != null)
+                SpectrumLayoutChanged(this, new SpectrumCountEventArgs(count, stereoSpectrum));
+        }
+
+        internal void OnBpmChanged()
+        {
+            if (BpmChanged != null)
+                BpmChanged(this, EventArgs.Empty);
+        }
+
+        internal void OnSettingsChanged()
+        {
+            if (SettingsChanged != null)
+                SettingsChanged(this, EventArgs.Empty);
+        }
+
+        internal void OnRunningChanged()
+        {
+            if (RunningChanged != null)
+                RunningChanged(this, EventArgs.Empty);
+        }
+
+        internal void OnDevicesChanged()
+        {
+            if (DevicesChanged != null)
+                DevicesChanged(this, EventArgs.Empty);
         }
     }
 }

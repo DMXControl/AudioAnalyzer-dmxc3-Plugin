@@ -1,9 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Resources;
 using System.Text;
-using System.Windows.Forms;
 using Lumos.GUI.Connection;
 using Lumos.GUI.Plugin;
 using Lumos.GUI;
@@ -24,16 +23,19 @@ namespace AudioAnalyzer
 
         private const string AudioAnalyzerPluginID = "{2D9C6D8C-431E-4d24-965C-AC4080C25CBA}";
         private static readonly LumosResourceMetadata AnalyzerSettings = new LumosResourceMetadata("AudioAnalyzerSettings.xml", EResourceContentType.ManagedTree);
-        
-        private readonly audioAnalysForm pluginForm;
+
+        private readonly AudioAnalyzerEngine engine;
+        private readonly AudioAnalyzer.Wpf.AudioAnalyzerWpfView wpfView;
         private readonly AudioAnalyzerInputSourceFactory inputFactory;
 
         public AudioAnalyzerPlugin()
             : base(AudioAnalyzerPluginID, "Audio Analyzer")
         {
-            pluginForm = new audioAnalysForm();
-            
-            inputFactory = new AudioAnalyzerInputSourceFactory(pluginForm);
+            engine = new AudioAnalyzerEngine();
+
+            wpfView = new AudioAnalyzer.Wpf.AudioAnalyzerWpfView(engine);
+
+            inputFactory = new AudioAnalyzerInputSourceFactory(engine);
         }
 
         public override void saveProject(LumosGUIIOContext context)
@@ -66,76 +68,73 @@ namespace AudioAnalyzer
 
         public override void closeProject(LumosGUIIOContext context)
         {
-            if (pluginForm.running)
+            if (engine.IsRunning)
             {
-                pluginForm.stopAudioAnalysis();
+                engine.stopAudioAnalysis();
             }
             base.closeProject(context);
         }
 
         protected async override void shutdownPlugin()
         {
-            if (pluginForm.running)
-            {
-                pluginForm.stopAudioAnalysis();
-            }
-            this.pluginForm.Close();
-            WindowManager.getInstance().RemoveWindow(this.pluginForm);
+            this.wpfView.Close();
+            WindowManager.getInstance().RemoveWindow(this.wpfView);
+
+            engine.Dispose();
         }
 
         protected async override void startupPlugin()
         {
-            WindowManager.getInstance().AddWindow(this.pluginForm);
+            WindowManager.getInstance().AddWindow(this.wpfView);
         }
 
         /// <summary>
         /// writes the audio-Analyzer settings to the project
         /// </summary>
-        /// <returns></returns>
         private ManagedTreeItem readSettingsFromAnalyzer()
         {
             log.Info("Saving Data {0} {1}. {2}", "AudioAnalyzer", "Start", 3);
             ManagedTreeItem m = new ManagedTreeItem("AudioAnalyzerSettings.xml");
 
             ManagedTreeItem c = new ManagedTreeItem("Common");
-            c.setValue("Gain", pluginForm.gainBar.Value);
+            c.setValue("Gain", engine.MainGain);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Device");
-            string deviceId = pluginForm.getSelectedDeviceId();
+            string deviceId = engine.SelectedDeviceId;
             if (!String.IsNullOrEmpty(deviceId))
             {
                 c.setValue("DeviceId", deviceId);
-                c.setValue("InputChannel", pluginForm.getSelectedInputChannel());
+                c.setValue("InputChannel", engine.SelectedInputChannel);
             }
             m.AddChild(c);
 
             c = new ManagedTreeItem("Level");
-            c.setValue("VUGain", pluginForm.gainVUBar.Value);
-            c.setValue("PeakHold", pluginForm.PeakHoldCheckBox.Checked);
-            c.setValue("PeakHoldTime", pluginForm.PeakHoldBar.Value);
+            c.setValue("VUGain", engine.VuGain);
+            c.setValue("PeakHold", engine.PeakHold);
+            c.setValue("PeakHoldTime", engine.PeakHoldTime);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Spectrum");
-            c.setValue("SubBands", pluginForm.subBandBox.SelectedIndex);
-            c.setValue("SpecGain", pluginForm.gainSpectrumBar.Value);
-            c.setValue("StereoSpectrum", pluginForm.stereoSpectrumCheckBox.Checked);
+            c.setValue("SubBands", bandCountToIndex(engine.BandCount));
+            c.setValue("SpecGain", engine.SpectrumGain);
+            c.setValue("StereoSpectrum", engine.StereoSpectrum);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Beat");
-            c.setValue("Algorithm", pluginForm.methodBox.SelectedIndex);
-            c.setValue("Sensitivity", pluginForm.sensitivityBar.Value);
-            c.setValue("MaxBpmOnOff", pluginForm.maxBPMCheckBox.Checked);
-            c.setValue("MaxBPM", pluginForm.maxBPMBar.Value);
-            c.setValue("ForecastCount", pluginForm.numberOfBeatsBar.Value);
-            c.setValue("DoubleSpeed", pluginForm.doubleCheckBox.Checked);
-            c.setValue("HalfSpeed", pluginForm.halfCheckBox.Checked);
+            c.setValue("Algorithm", engine.BeatAlgorithm);
+            c.setValue("Sensitivity", engine.Sensitivity);
+            c.setValue("MaxBpmOnOff", engine.MaxBpmLimit);
+            c.setValue("MaxBPM", engine.MaxBpm);
+            c.setValue("ForecastCount", engine.ForecastCount);
+            c.setValue("DoubleSpeed", engine.DoubleSpeed);
+            c.setValue("HalfSpeed", engine.HalfSpeed);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Generator");
-            c.setValue("GeneratorOnOff", pluginForm.activateBeatGeneratorCheckbox.Checked);
-            c.setValue("GeneratorBPM", Convert.ToInt32(pluginForm.beatGeneratorUpDown.Value));
-            c.setValue("Rhythm", pluginForm.rhythmTypeComboBox.SelectedIndex);
+            c.setValue("GeneratorOnOff", engine.GeneratorEnabled);
+            c.setValue("GeneratorBPM", engine.GeneratorBpm);
+            c.setValue("Rhythm", engine.Rhythm);
             m.AddChild(c);
 
             log.Info("Saving Data {0} {1}. {2}", "AudioAnalyzer", "End", m.Children.Count);
@@ -144,36 +143,39 @@ namespace AudioAnalyzer
         }
 
         /// <summary>
-        /// clamps to the bar's range. A value outside it makes the setter throw, and that
-        /// would abort the rest of the restore.
+        /// The band count is stored as the position in the list of offered counts, not as the
+        /// count itself - that is how the old combobox wrote it, and existing projects have to
+        /// keep loading.
         /// </summary>
-        private static void setBarValue(TrackBar bar, int value)
+        private int bandCountToIndex(int bandCount)
         {
-            bar.Value = Math.Min(bar.Maximum, Math.Max(bar.Minimum, value));
+            var counts = engine.AvailableBandCounts;
+            for (int i = 0; i < counts.Count; i++)
+            {
+                if (counts[i] == bandCount)
+                    return i;
+            }
+            return 2;   // 32, der Vorgabewert
+        }
+
+        private int indexToBandCount(int index)
+        {
+            var counts = engine.AvailableBandCounts;
+            return (index >= 0 && index < counts.Count) ? counts[index] : 32;
         }
 
         /// <summary>
         /// reads the audio-Analyzer settings from project
         /// </summary>
-        /// <param name="m"></param>
         private void writeSettingsToAnalyzer(ManagedTreeItem m)
         {
-            // Kann auch aus connectionEstablished() heraus kommen, das ist nicht zwingend
-            // der UI-Thread. Ohne Handle ist InvokeRequired false und der direkte Zugriff
-            // ist unbedenklich.
-            if (pluginForm.InvokeRequired)
-            {
-                pluginForm.Invoke(new Action<ManagedTreeItem>(writeSettingsToAnalyzer), m);
-                return;
-            }
-
             log.Info("Reading AudioAnalyzer Settings Start: " + m.Name);
 
             foreach (ManagedTreeItem i in m.GetChildren("Common"))
             {
                 if (i.hasValue<int>("Gain"))
                 {
-                    setBarValue(pluginForm.gainBar, i.getValue<int>("Gain"));
+                    engine.MainGain = i.getValue<int>("Gain");
                 }
             }
 
@@ -182,7 +184,7 @@ namespace AudioAnalyzer
                 if (i.hasValue<string>("DeviceId"))
                 {
                     int channel = i.hasValue<int>("InputChannel") ? i.getValue<int>("InputChannel") : 0;
-                    pluginForm.setDevice(i.getValue<string>("DeviceId"), channel);
+                    engine.setDevice(i.getValue<string>("DeviceId"), channel);
                 }
             }
 
@@ -190,17 +192,15 @@ namespace AudioAnalyzer
             {
                 if (i.hasValue<int>("VUGain"))
                 {
-                    setBarValue(pluginForm.gainVUBar, i.getValue<int>("VUGain"));
+                    engine.VuGain = i.getValue<int>("VUGain");
                 }
                 if (i.hasValue<bool>("PeakHold"))
                 {
-                    pluginForm.PeakHoldCheckBox.Checked = i.getValue<bool>("PeakHold");
-                    //MessageBox.Show("PeakHold: " + i.getValue<bool>("PeakHold"));
-                    pluginForm.peakHold = i.getValue<bool>("PeakHold");
+                    engine.PeakHold = i.getValue<bool>("PeakHold");
                 }
                 if (i.hasValue<int>("PeakHoldTime"))
                 {
-                    setBarValue(pluginForm.PeakHoldBar, i.getValue<int>("PeakHoldTime"));
+                    engine.PeakHoldTime = i.getValue<int>("PeakHoldTime");
                 }
             }
 
@@ -208,81 +208,55 @@ namespace AudioAnalyzer
             {
                 if (i.hasValue<bool>("StereoSpectrum"))
                 {
-                    pluginForm.stereoSpectrumCheckBox.Checked = i.getValue<bool>("StereoSpectrum");
-                    pluginForm.stereoSpectrum = i.getValue<bool>("StereoSpectrum");
+                    engine.StereoSpectrum = i.getValue<bool>("StereoSpectrum");
                 }
 
                 if (i.hasValue<int>("SubBands"))
                 {
-                    // gespeichert wird der Index der Combobox, nicht die Bandanzahl
-                    int bands;
-                    switch (i.getValue<int>("SubBands"))
-                    {
-                        case 0:
-                            bands = 8;
-                            break;
-                        case 1:
-                            bands = 16;
-                            break;
-                        case 3:
-                            bands = 64;
-                            break;
-                        case 4:
-                            bands = 96;
-                            break;
-                        default:
-                            bands = 32;
-                            break;
-                    }
-
-                    pluginForm.setUsedBands(bands);
+                    engine.BandCount = indexToBandCount(i.getValue<int>("SubBands"));
                 }
 
                 if (i.hasValue<int>("SpecGain"))
                 {
-                    setBarValue(pluginForm.gainSpectrumBar, i.getValue<int>("SpecGain"));
+                    engine.SpectrumGain = i.getValue<int>("SpecGain");
                 }
-
             }
 
             foreach (ManagedTreeItem i in m.GetChildren("Beat"))
             {
                 if (i.hasValue<bool>("MaxBpmOnOff"))
                 {
-                    pluginForm.maxBPMCheckBox.Checked = i.getValue<bool>("MaxBpmOnOff");
-                    //pluginForm.newBPM();
+                    engine.MaxBpmLimit = i.getValue<bool>("MaxBpmOnOff");
                 }
 
                 if (i.hasValue<int>("MaxBPM"))
                 {
-                    setBarValue(pluginForm.maxBPMBar, i.getValue<int>("MaxBPM"));
+                    engine.MaxBpm = i.getValue<int>("MaxBPM");
                 }
 
                 if (i.hasValue<int>("Algorithm"))
                 {
-                    int alg = i.getValue<int>("Algorithm");
-                    if (alg >= 0 && alg < pluginForm.methodBox.Items.Count)
-                        pluginForm.methodBox.SelectedIndex = alg;
+                    engine.BeatAlgorithm = i.getValue<int>("Algorithm");
                 }
 
                 if (i.hasValue<int>("Sensitivity"))
                 {
-                    setBarValue(pluginForm.sensitivityBar, i.getValue<int>("Sensitivity"));
+                    engine.Sensitivity = i.getValue<int>("Sensitivity");
                 }
 
                 if (i.hasValue<int>("ForecastCount"))
                 {
-                    setBarValue(pluginForm.numberOfBeatsBar, i.getValue<int>("ForecastCount"));
+                    engine.ForecastCount = i.getValue<int>("ForecastCount");
                 }
 
                 if (i.hasValue<bool>("DoubleSpeed"))
                 {
-                    pluginForm.doubleCheckBox.Checked = i.getValue<bool>("DoubleSpeed");
+                    engine.DoubleSpeed = i.getValue<bool>("DoubleSpeed");
                 }
 
                 if (i.hasValue<bool>("HalfSpeed"))
                 {
-                    pluginForm.halfCheckBox.Checked = i.getValue<bool>("HalfSpeed");
+                    engine.HalfSpeed = i.getValue<bool>("HalfSpeed");
                 }
             }
 
@@ -290,31 +264,23 @@ namespace AudioAnalyzer
             {
                 if (i.hasValue<int>("GeneratorBPM"))
                 {
-                    // auf den Wertebereich des Controls begrenzen, ausserhalb wirft der Setter
-                    decimal bpm = i.getValue<int>("GeneratorBPM");
-                    if (bpm >= pluginForm.beatGeneratorUpDown.Minimum
-                        && bpm <= pluginForm.beatGeneratorUpDown.Maximum)
-                    {
-                        pluginForm.beatGeneratorUpDown.Value = bpm;
-                    }
+                    engine.GeneratorBpm = i.getValue<int>("GeneratorBPM");
                 }
 
                 if (i.hasValue<int>("Rhythm"))
                 {
-                    pluginForm.setRhythm(i.getValue<int>("Rhythm"));
+                    engine.Rhythm = i.getValue<int>("Rhythm");
                 }
 
                 if (i.hasValue<bool>("GeneratorOnOff"))
                 {
-                    pluginForm.activateBeatGeneratorCheckbox.Checked = i.getValue<bool>("GeneratorOnOff");
+                    engine.GeneratorEnabled = i.getValue<bool>("GeneratorOnOff");
                 }
-
             }
 
-            pluginForm.applyControlValues();
+            engine.recomputeDerivedValues();
 
             log.Info("Reading AudioAnalyzer Settings End ");
-
         }
     }
 }

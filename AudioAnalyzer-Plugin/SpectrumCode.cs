@@ -1,17 +1,11 @@
 ﻿using System;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Windows.Forms;
-using System.Runtime.InteropServices;
-using System.Diagnostics;
-using System.Drawing.Drawing2D;
 using AudioAnalyzer.AAEventArgs;
 
 
 namespace AudioAnalyzer
 {
-	public partial class audioAnalysForm
+	public partial class AudioAnalyzerEngine
 	{
 
         /// <summary>
@@ -86,7 +80,7 @@ namespace AudioAnalyzer
         /// Derived from the tone table, so independent of the sample rate - configSubBands
         /// only rounds these edges onto the fft bin raster.
         /// </summary>
-        internal string getBandRangeLabel(int number)
+        private string getBandRangeLabel(int number)
         {
             int i = number - 1;
             if (i < 0 || i >= usedbands)
@@ -141,16 +135,14 @@ namespace AudioAnalyzer
                 return;
             }
 
-            actualTime = beatClock.ElapsedMilliseconds;
-
-            // Beat-Erkennung und Stimmung arbeiten immer auf dem Mono-Mix
+            // Die Beat-Erkennung arbeitet immer auf dem Mono-Mix
             computeSubbands(fft, sublevel, subenergy);
             minsubenergy = subenergy.Min();
         }
 
         /// <summary>
-        /// computes the additional per-channel ffts. Only drawSpectrum() reads their result,
-        /// so this runs at the drawing rate instead of every beat tick.
+        /// computes the additional per-channel ffts. Only sendSpectrum() reads their result,
+        /// so this runs at the output rate instead of every beat tick.
         /// </summary>
         private void computeChannelSubbands()
         {
@@ -182,69 +174,24 @@ namespace AudioAnalyzer
             }
         }
 
-        /// <summary>
-        /// draws the spectrum
-        /// </summary>
-        void drawSpectrum()
+
+        void sendSpectrum()
         {
             if (stereoSpectrum)
             {
                 computeChannelSubbands();
                 computeDbSubLevel(sublevelLeft, dbSubLevelLeft);
                 computeDbSubLevel(sublevelRight, dbSubLevelRight);
+
+                OnSpectrumChanged(dbSubLevelLeft, ESpectrumChannel.Left);
+                OnSpectrumChanged(dbSubLevelRight, ESpectrumChannel.Right);
             }
             else
             {
                 computeDbSubLevel(sublevel, dbSubLevel);
-            }
 
-            if (spectrumBitmap == null
-                || spectrumBitmap.Width != spectrumPicture.Width
-                || spectrumBitmap.Height != spectrumPicture.Height)
-            {
-                if (spectrumBitmap != null)
-                    spectrumBitmap.Dispose();
-                spectrumBitmap = new Bitmap(spectrumPicture.Width, spectrumPicture.Height);
+                OnSpectrumChanged(dbSubLevel, ESpectrumChannel.Mono);
             }
-
-            // Erst vollständig in die Bitmap, dann in einem Zug auf den Bildschirm.
-            using (Graphics bg = Graphics.FromImage(spectrumBitmap))
-            using (Brush b = new SolidBrush(spectrumActive))
-            {
-                bg.Clear(Color.Black);
-
-                if (stereoSpectrum)
-                {
-                    // L in die obere, R in die untere Hälfte
-                    int half = spectrumBitmap.Height / 2;
-                    drawSpectrumChannel(bg, b, dbSubLevelLeft, 0, half);
-                    drawSpectrumChannel(bg, b, dbSubLevelRight, half, spectrumBitmap.Height - half);
-                }
-                else
-                {
-                    drawSpectrumChannel(bg, b, dbSubLevel, 0, spectrumBitmap.Height);
-                }
-            }
-
-            using (Graphics g = spectrumPicture.CreateGraphics())
-            {
-                g.DrawImageUnscaled(spectrumBitmap, 0, 0);
-            }
-            //if (dbSubLevel.Max() > debugV)
-            //    debugV = dbSubLevel.Max();
-            //g.DrawString(debugV.ToString("F2"),f,b,50,5);
-
-            if (stereoSpectrum)
-            {
-                OnSendSpectrum(dbSubLevelLeft, ESpectrumChannel.Left);
-                OnSendSpectrum(dbSubLevelRight, ESpectrumChannel.Right);
-            }
-            else
-            {
-                OnSendSpectrum(dbSubLevel, ESpectrumChannel.Mono);
-            }
-
-            //debugLabel.Text = dbSubLevel.Max().ToString();
         }
 
         /// <summary>
@@ -288,25 +235,6 @@ namespace AudioAnalyzer
                 {
                     dbSubLevel[i] = 0;
                 }
-            }
-        }
-
-        /// <summary>
-        /// draws the bars of one channel into a horizontal band of the picture
-        /// </summary>
-        private void drawSpectrumChannel(Graphics g, Brush b, double[] dbSubLevel, int top, int height)
-        {
-            int dx = (int)(spectrumBitmap.Width / usedbands);
-            if (dx <= 0)
-                dx = 1;
-
-            int sx = (int)((spectrumBitmap.Width - (usedbands * dx)) / 2);
-
-            for (int i = 0; i < usedbands; i++)
-            {
-                int scaledDB = (int)(height * (1 - dbSubLevel[i]));
-
-                g.FillRectangle(b, sx + i * dx, top + scaledDB, dx, height - scaledDB);
             }
         }
 

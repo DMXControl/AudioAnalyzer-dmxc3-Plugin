@@ -9,16 +9,11 @@ using System.Diagnostics;
 
 namespace AudioAnalyzer
 {
-	public partial class audioAnalysForm
+	public partial class AudioAnalyzerEngine
 	{
 
-        /// <summary>
-        /// draws level bars
-        /// </summary>
-        void drawLevel()
+        void sendLevel()
 		{
-			int volL;
-			int volR;
             float[] outLevel = new float[2];
 
             // Maxiamlwert der letzten 4 Werte ermitteln (nicht bei PeakHold)
@@ -46,23 +41,7 @@ namespace AudioAnalyzer
                     outLevel[1] = levelhistory[1, 0];
             }
 
-            volL = (int)(levelLBox.Width * outLevel[0]);
-			volR = (int)(levelRBox.Width * outLevel[1]);
-
-			// Zeichnen des Levels ...
-
-			using (Graphics g1 = levelLBox.CreateGraphics())
-			using (Graphics g2 = levelRBox.CreateGraphics())
-			using (Brush b = new SolidBrush(levelActive))
-			{
-				g1.Clear(Color.Black);
-				g2.Clear(Color.Black);
-
-				g1.FillRectangle(b, 0, 0, volL, levelLBox.Height);
-				g2.FillRectangle(b, 0, 0, volR, levelRBox.Height);
-			}
-
-            OnSendLevel(outLevel[0], outLevel[1]);
+            OnLevelChanged(outLevel[0], outLevel[1]);
 		}
 
 	}

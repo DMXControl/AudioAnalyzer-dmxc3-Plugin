@@ -10,7 +10,7 @@ using System.Drawing.Drawing2D;
 
 namespace AudioAnalyzer
 {
-    public partial class audioAnalysForm
+    public partial class AudioAnalyzerEngine
     {
         private void doBeatStatisticsSimple(long beatTime)
         {
@@ -55,7 +55,7 @@ namespace AudioAnalyzer
 
                 baseBeat = midBpm;
 
-                actualBPMLabel.Text = Convert.ToString(baseBeat);
+                OnBpmChanged();
 
                 if (forecast)
                 {
@@ -64,17 +64,10 @@ namespace AudioAnalyzer
                     if (halfSpeed)
                     {
                         addBeatTimer.Interval = addBeatTimer.Interval * 2;
-                        generatedBpmLabel.Text = Convert.ToString(baseBeat / 2);
                     }
                     if (doubleSpeed)
                     {
                         addBeatTimer.Interval = addBeatTimer.Interval / 2;
-                        generatedBpmLabel.Text = Convert.ToString(baseBeat * 2);
-                    }
-                    else
-                    {
-                        addBeatTimer.Interval = addBeatTimer.Interval;
-                        generatedBpmLabel.Text = Convert.ToString(baseBeat);
                     }
 
                     addBeatTimer.Start();
@@ -92,6 +85,7 @@ namespace AudioAnalyzer
             beatCount = 0;
             baseBeat = 0;
             midBpm = 0;
+            OnBpmChanged();
 
             //TimeSpan leer=TimeSpan.FromTicks(0);
             if (beatMemory != null)

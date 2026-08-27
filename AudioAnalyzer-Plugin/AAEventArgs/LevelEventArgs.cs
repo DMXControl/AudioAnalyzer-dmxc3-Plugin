@@ -5,7 +5,7 @@ using System.Text;
 
 namespace AudioAnalyzer.AAEventArgs
 {
-    class LevelEventArgs : EventArgs
+    public class LevelEventArgs : EventArgs
     {
         public readonly float VolumeL, VolumeR;
 

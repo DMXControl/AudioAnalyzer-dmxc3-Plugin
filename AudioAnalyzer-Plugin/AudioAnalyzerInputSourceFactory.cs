@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using AudioAnalyzer.AAEventArgs;
+using AudioAnalyzer.Engine;
 using AudioAnalyzer.Input;
 using Lumos.GUI.Input;
 using Lumos.GUI.Input.v2;
@@ -12,9 +13,12 @@ using System.Threading.Tasks;
 
 namespace AudioAnalyzer
 {
+    /// <summary>
+    /// Publishes the measured values to DMXControl as input sources.
+    /// </summary>
     public class AudioAnalyzerInputSourceFactory : IDisposable
     {
-        private readonly audioAnalysForm _form;
+        private readonly IAudioAnalyzer _analyzer;
 
         private readonly EventHandler<BeatEventArgs> _sendBeatDelegate;
         private readonly EventHandler<LevelEventArgs> _sendLevelDelegate;
@@ -24,13 +28,13 @@ namespace AudioAnalyzer
         private AAVolumeSource volL, volR;
         private AABeatSource beat;
 
-        public AudioAnalyzerInputSourceFactory(audioAnalysForm form)
+        public AudioAnalyzerInputSourceFactory(IAudioAnalyzer analyzer)
         {
-            this._form = form;
+            this._analyzer = analyzer;
 
             _sendBeatDelegate = (s, args)
                 => beat?.IncrementBeat();
-            form.SendBeat += _sendBeatDelegate;
+            analyzer.BeatDetected += _sendBeatDelegate;
 
             _sendLevelDelegate = (s, args)
                 =>
@@ -38,11 +42,11 @@ namespace AudioAnalyzer
                     volL?.SetVolume(args.VolumeL);
                     volR?.SetVolume(args.VolumeR);
                 };
-            form.SendLevel += _sendLevelDelegate;
+            analyzer.LevelChanged += _sendLevelDelegate;
 
-            form.SendSpectrum += UpdateSpectrum;
+            analyzer.SpectrumChanged += UpdateSpectrum;
 
-            form.SendSpectrumCount += UpdateSpectrumInputs;
+            analyzer.SpectrumLayoutChanged += UpdateSpectrumInputs;
         }
 
         public async Task CreateInputs()
@@ -59,7 +63,7 @@ namespace AudioAnalyzer
                 InputManager.getInstance().RegisterSource(volL);
                 InputManager.getInstance().RegisterSource(volR);
 
-                SyncSpectrumSources(_form.usedbands, _form.stereoSpectrum);
+                SyncSpectrumSources(_analyzer.BandCount, _analyzer.StereoSpectrum);
             });
         }
 
@@ -112,7 +116,7 @@ namespace AudioAnalyzer
         {
             foreach (var s in sources)
             {
-                s.SetBandRange(_form.getBandRangeLabel(s.Number));
+                s.SetBandRange(_analyzer.GetBandRangeLabel(s.Number));
             }
         }
 
@@ -124,7 +128,7 @@ namespace AudioAnalyzer
                 for (int i = sources.Count + 1; i <= count; i++)
                 {
                     var s = new AASpectrumSource(i, channel, stereo);
-                    s.SetBandRange(_form.getBandRangeLabel(i));
+                    s.SetBandRange(_analyzer.GetBandRangeLabel(i));
                     sources.Add(s);
                     added.Add(s);
                 }
@@ -162,10 +166,10 @@ namespace AudioAnalyzer
                 return;
             IsDisposed = true;
 
-            _form.SendBeat -= _sendBeatDelegate;
-            _form.SendLevel -= _sendLevelDelegate;
-            _form.SendSpectrum -= UpdateSpectrum;
-            _form.SendSpectrumCount -= UpdateSpectrumInputs;
+            _analyzer.BeatDetected -= _sendBeatDelegate;
+            _analyzer.LevelChanged -= _sendLevelDelegate;
+            _analyzer.SpectrumChanged -= UpdateSpectrum;
+            _analyzer.SpectrumLayoutChanged -= UpdateSpectrumInputs;
         }
 
         #endregion

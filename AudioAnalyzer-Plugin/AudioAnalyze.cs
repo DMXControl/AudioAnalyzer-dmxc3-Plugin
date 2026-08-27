@@ -1,30 +1,33 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
-using LumosLIB.GUI.Windows;
-using Lumos.GUI.BaseWindow;
+using System.Linq;
+using System.Windows.Forms;
 using AudioAnalyzer.AAEventArgs;
+using AudioAnalyzer.Engine;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 
 namespace AudioAnalyzer
 {
-	public partial class audioAnalysForm : ToolWindow
-	{
-        public audioAnalysForm()
+    /// <summary>
+    /// The audio analysis. No window, no controls - this is the kernel half of the plugin.
+    ///
+    /// It used to be a WinForms ToolWindow, and the settings lived in its controls: a slider
+    /// position WAS the gain, a checkbox WAS the flag. That made a second surface impossible
+    /// without the window existing, so the values now live in plain fields and the surfaces
+    /// reach them through IAudioAnalyzer.
+    ///
+    /// Still WinForms-shaped in one place: the timers are System.Windows.Forms.Timer, which
+    /// ticks on the GUI thread. The whole event chain - and the WPF view models at the end of
+    /// it - relies on that; none of them marshal. Whatever replaces these timers when the
+    /// analysis moves into the kernel has to deliver on the GUI thread just the same.
+    /// </summary>
+    public partial class AudioAnalyzerEngine : IAudioAnalyzer, IDisposable
+    {
+        public AudioAnalyzerEngine()
         {
-            this.MenuIconKey = "music_red";
-
-            InitializeComponent();
-
             tones[0] = A0;
             tones[1] = AIS0;
             tones[2] = B0;
@@ -143,157 +146,120 @@ namespace AudioAnalyzer
 
             startBand = Array.IndexOf(tones, E2);
 
-            for (int i = 0; i < rhythmNames.Length; i++)
-            {
-                rhythmTypeComboBox.Items.Add(rhythmNames[i]);
-            }
-
+            initializeAnalysis();
+            initializeDevices();
         }
-
-        public override Lumos.GUI.EMenuGroups MenuGroup
-        {
-            get { return Lumos.GUI.EMenuGroups.Control; }
-        }
-
 
         /// <summary>
-        /// load form, initialize values, get sound devices
+        /// Everything the analysis needs to run.
         /// </summary>
-		private void audioAnalysForm_Load(object sender, EventArgs e)
-		{
-            // create a high performance timer for measuring
+        private void initializeAnalysis()
+        {
             beatClock = new Stopwatch();
 
-			// create a timer for beat-detection
-			beatTimer = new Timer();
+            // Takt der Analyse
+            beatTimer = new Timer();
             beatTimer.Interval = beatInterval;
             beatTimer.Tick += new EventHandler(beatTimer_Tick);
 
-			// create a timer for BPM
-			beatclearTimer = new Timer();
-            beatclearTimer.Interval = (int)(60000 / MaxBPM);
+            beatclearTimer = new Timer();
+            beatclearTimer.Interval = (int)(60000 / maxBpmEffective);
             beatclearTimer.Tick += new EventHandler(beatclearTimer_Tick);
 
-			// create a timer for turning off Beat-PictureBox
-			beatclearTimer2 = new Timer();
-            beatclearTimer2.Interval = 60;
-			beatclearTimer2.Tick += new EventHandler(beatclearTimer2_Tick);
-
-			// create a timer for suppressing the first second
-			startTimer = new Timer();
+            startTimer = new Timer();
             startTimer.Interval = 1000;
-			startTimer.Tick += new EventHandler(startTimer_Tick);
+            startTimer.Tick += new EventHandler(startTimer_Tick);
 
-            // create a timer for suppressing the first second
-            //infoTimer = new BASSTimer(1000);
-            //infoTimer.Tick += new EventHandler(infoTimer_Tick);
-
-            // create a timer for suppressing the first second
             addBeatTimer = new Timer();
             addBeatTimer.Interval = 1000;
             addBeatTimer.Tick += new EventHandler(addBeatTimer_Tick);
 
-            // create a timer for main Beat Generator
+            // Generator
             mainBeatTimer = new Timer();
             mainBeatTimer.Interval = 4000;
             mainBeatTimer.Tick += new EventHandler(mainBeatTimer_Tick);
 
-            // create a timer for main Beat Generator
             subBeatTimer = new Timer();
             subBeatTimer.Interval = 4000;
             subBeatTimer.Tick += new EventHandler(subBeatTimer_Tick);
 
-            // create a timer for tap button timeout
             tapTimeout = new Timer();
             tapTimeout.Interval = 4000;
             tapTimeout.Tick += new EventHandler(tapTimeout_Tick);
 
-            // create a stopwatch for tapButton
             tapWatch = new Stopwatch();
             tapValues = new long[4];
 
-            // fill rhythm types combobox
-            //for (int i = 0; i < rhythmNames.Length; i++)
-            //{
-            //    rhythmTypeComboBox.Items.Add(rhythmNames[i]);
-            //}
-            formBackColor = generatorTabPage.BackColor;
-            setRhythm((int)generatorRhythm);
-            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
-            drawBeatPicture(0);
-
-			// create a List for sorted indices for Beat4()
-			sortedindex = new List<int>(256);
-
-            // create an array for beat memory
+            // Beat-Statistik
+            sortedindex = new List<int>(256);
             beatMemory = new TimeSpan[200];
             bpmMemory = new int[200];
             bpmDistribution = new int[20];
             beatClock.Start();
             actualBeatTime = beatClock.ElapsedMilliseconds;
-            analysisHistory = new Queue<historyEntry>();
+            newBPM();
 
-            // initialize for baseTone
-            maximumsList = new List<Tone>();
-            baseToneMemory = new int[memoryLength];
-            for (int i = 0; i < memoryLength; i++)
-            {
-                baseToneMemory[i] = 0;
-            }
-
-
-            // init for chord
-            baseChordMemory = new int[memoryLength];
-            for (int i = 0; i < memoryLength; i++)
-            {
-                baseChordMemory[i] = 0;
-            }
-
-            // init Mood-Picture
-            moodBitmap = new Bitmap(moodPictureBox.Width, moodPictureBox.Height);
-
-			newBPM();
-
+            // Aufnahme und FFT
             _aggregatorLeft = new LumosLIB.Tools.FastFourierTransform.SampleAggregator();
-            _aggregatorLeft.NotificationCount = 1024;
+            _aggregatorLeft.NotificationCount = aggregatorNotificationCount;
             _aggregatorLeft.MaximumCalculated += AggregatorLeft_MaximumCalculated;
             _aggregatorRight = new LumosLIB.Tools.FastFourierTransform.SampleAggregator();
-            _aggregatorRight.NotificationCount = 1024;
+            _aggregatorRight.NotificationCount = aggregatorNotificationCount;
             _aggregatorRight.MaximumCalculated += AggregatorRight_MaximumCalculated;
             _fftBuffer = new FFTCircularBuffer(fftLength);
             _fftBufferLeft = new FFTCircularBuffer(fftLength);
             _fftBufferRight = new FFTCircularBuffer(fftLength);
 
-            using (MMDeviceEnumerator enumerator = new MMDeviceEnumerator()) {
-                foreach (MMDevice wasapi in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) {
-                    devicesBox.Items.Add(new WasapiSoundSource(wasapi));
+            configSubBands();
+            updatePeakHoldSteps();
+
+            applyAlgorithm(algorithm);
+            setUsedBands(usedbands);
+            setRhythm((int)generatorRhythm);
+            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+        }
+
+        /// <summary>
+        /// Enumerates the audio devices, in the constructor: anything asking for the list -
+        /// the WPF surface, and later the kernel - must not have to wait for a window.
+        /// </summary>
+        private void initializeDevices()
+        {
+            try
+            {
+                using (MMDeviceEnumerator enumerator = new MMDeviceEnumerator()) {
+                    foreach (MMDevice wasapi in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active)) {
+                        deviceList.Add(new WasapiSoundSource(wasapi));
+                    }
                 }
             }
-            if (AsioOut.isSupported()) {
-                foreach (string asio in AsioOut.GetDriverNames()) {
-                    devicesBox.Items.Add(new AsioSoundSource(asio));
-                }
+            catch (Exception e)
+            {
+                log.Error("Could not enumerate WASAPI devices: {0}", e, e.Message);
             }
 
-			selectWantedDevice();
+            try
+            {
+                if (AsioOut.isSupported()) {
+                    foreach (string asio in AsioOut.GetDriverNames()) {
+                        deviceList.Add(new AsioSoundSource(asio));
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.Error("Could not enumerate ASIO drivers: {0}", e, e.Message);
+            }
 
-			methodBox.SelectedIndex = algorithm;
-			setUsedBands(usedbands);
-
-            noOfLabel.Text = "max. " + numberOfBeatsBar.Value + " additional beats";
-
-			configSubBands();
-
-            OnSendSpectrumCount(usedbands);
-
-            //infoTimer.Start();
-
-		}
+            selectWantedDevice();
+            OnDevicesChanged();
+        }
 
         private void AudioStream_SamplesAvailable(object sender, float[] samples, int count, int channels, int samplerate) {
             if (this.sampleRate != samplerate) {
                 this.sampleRate = samplerate;
                 configSubBands();
+                updatePeakHoldSteps();
             }
             float left = 0;
             for (int i = 0; i < count; ++i) {
@@ -328,26 +294,18 @@ namespace AudioAnalyzer
         /// <summary>
         /// wait short time to fill history buffers before computing values
         /// </summary>
-		void startTimer_Tick(object sender, EventArgs e)
-		{
-			startTimer.Enabled = false;
-			starting = false;
-		}
+        void startTimer_Tick(object sender, EventArgs e)
+        {
+            startTimer.Enabled = false;
+            starting = false;
+        }
 
-        //void infoTimer_Tick(object sender, EventArgs e)
-        //{
-        //    //infoLabel.Text = maxSpecVal.ToString();
-        //    //maxSpecVal = 0;
-        //}
+        #region beat
 
-		# region beat
-
-		/// <summary>
-		/// Main timer task, computes beat, level, spectrum every 20ms, draws graphics every 80ms
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		void beatTimer_Tick(object sender, EventArgs e)
+        /// <summary>
+        /// Main timer task, computes the beat every 20 ms, level and spectrum every 60 ms.
+        /// </summary>
+        void beatTimer_Tick(object sender, EventArgs e)
         {
             // here we gather info about the stream, when it is playing...
             if (audioStream.Playing)
@@ -358,25 +316,14 @@ namespace AudioAnalyzer
                 // compute Beat
                 ComputeBeat();
 
-                // Compute mood
-                computeBaseTune();
-
-                // nur jeden (2./3.) 4. Durchgang das Level, Spektrum und Stimmung malen
                 if (draw == 0)
                 {
-                    drawLevel();
-                    drawSpectrum();
-                    //spectrumPicture.Image = spectrum.CreateSpectrum(_stream, spectrumPicture.Width, spectrumPicture.Height, Color.Green, Color.Red, Color.DarkBlue, false, false, false);
-                    drawMoodPicture(false);
-                    baseToneLabel.Text = baseToneName;
-                    chordLabel.Text = baseChordName;
+                    sendLevel();
+                    sendSpectrum();
                 }
                 draw++;
                 if (draw >= 3)
                     draw = 0;
-
-                // fill the statistics (max 200 values = 4 seconds)
-                fillStatistics();
             }
             else
             {
@@ -475,18 +422,12 @@ namespace AudioAnalyzer
             {
                 if (beatclearTimer.Enabled == false && beat_detected == true && starting == false)
                 {
-                    OnSendBeat(MinorBeat);
+                    OnBeatDetected(MinorBeat, EBeatSource.Detected);
 
-                    if (maxBPMCheckBox.Enabled) 
-                        beatclearTimer.Start();
-                    beatBox.BackColor = beatActive;
-                    beatclearTimer2.Start();
+                    beatclearTimer.Start();
 
                     lastBeatTime = actualBeatTime;
                     actualBeatTime = beatClock.ElapsedMilliseconds;
-
-                    //Console.WriteLine("vorher: " + lastBeatTime);
-                    //Console.WriteLine("jetzt : " + actualBeatTime);
 
                     doBeatStatisticsSimple(actualBeatTime - lastBeatTime);
 
@@ -505,58 +446,38 @@ namespace AudioAnalyzer
             }
         }
 
-		/// <summary>
-		/// resets beat_detected
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		void beatclearTimer_Tick(object sender, EventArgs e)
-		{
-			beatclearTimer.Stop();
-			beat_detected = false;
-		}
-
-		/// <summary>
-		/// resets color of beat detected pictureBox
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
-		void beatclearTimer2_Tick(object sender, EventArgs e)
-		{
-			beatclearTimer2.Stop();
-			beatBox.BackColor = beatPassive;
-
-            outputDebugInfo();
-		}
+        /// <summary>
+        /// resets beat_detected
+        /// </summary>
+        void beatclearTimer_Tick(object sender, EventArgs e)
+        {
+            beatclearTimer.Stop();
+            beat_detected = false;
+        }
 
         /// <summary>
         /// sends an artificial beat signal
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         void addBeatTimer_Tick(object sender, EventArgs e)
         {
             if (addedBeats < nbForecast && forecast && baseBeat > 0)
             {
                 // send beat
-                OnSendBeat(MinorBeat);
+                OnBeatDetected(MinorBeat, EBeatSource.Predicted);
 
                 addedBeats += 1;
 
                 if (addedBeats == 1)
                 {
-                    if (doubleCheckBox.Checked)
+                    if (doubleSpeed)
                         addBeatTimer.Interval = (int)(30000 / baseBeat);
-                    else if (halfCheckBox.Checked)
+                    else if (halfSpeed)
                         addBeatTimer.Interval = (int)(120000 / baseBeat);
                     else
                         addBeatTimer.Interval = (int)(60000 / baseBeat);
                 }
 
                 beatclearTimer.Start();
-                beatBox.BackColor = forecastBeatActive;
-
-                beatclearTimer2.Start();
             }
             else
             {
@@ -566,194 +487,119 @@ namespace AudioAnalyzer
 
         #endregion
 
-
+        #region Device selection
         /// <summary>
-        /// selected input has changed
+        /// Selects a device by list position. Replaces devicesBox_SelectedIndexChanged: it
+        /// also refills the input channels, which only ASIO devices have.
         /// </summary>
-		private void inputsBox_SelectedIndexChanged(object sender, EventArgs e)
-		{
-			if (audioStream != null)
-			{
-				startButton_Click(this, new EventArgs());
-			}
-
-			startButton.Text = "Start";
-
-			startButton.Focus();
-
-		}
-
-
-        /// <summary>
-        /// selected device has changed
-        /// </summary>
-		private void devicesBox_SelectedIndexChanged(object sender, EventArgs e)
-		{
-			if (audioStream != null)
-			{
-				startButton_Click(this, new EventArgs());
-			}
-
-            inputsBox.Items.Clear();
-            AbstractSoundSource source = (AbstractSoundSource)devicesBox.SelectedItem;
-            if (source == null) return;
-            if (source is AsioSoundSource) {
-                inputsBox.Items.AddRange(((AsioSoundSource)source).getInputNames());
-                inputsBox.Visible = true;
-                inputsBox.Enabled = inputsBox.Items.Count > 0;
-                if (inputsBox.Items.Count == 0) {
-                    inputsBox.Text = "< Device not connected or failed >";
-                }
-            } else {
-                inputsBox.Visible = false;
-            }
-            label7.Visible = inputsBox.Visible;
-
-            if (inputsBox.Items.Count > 0) {
-                inputsBox.SelectedIndex = 0;
-                inputsBox_SelectedIndexChanged(this, new EventArgs());
-                startButton.Enabled = true;
-            } else if (!inputsBox.Visible) {
-                startButton.Enabled = true;
-            } else {
-                startButton.Enabled = false;
-            }
-
-			startButton.Focus();
-		}
-
-
-        /// <summary>
-        /// starts/stops the action 
-        /// </summary>
-		private void startButton_Click(object sender, EventArgs e)
-		{
-            if (generatorMode == false)
-            {
-                if (running)
-                {
-                    stopAudioAnalysis();
-                    startButton.Image = global::AudioAnalyzer.Properties.Resources.media_play;
-                    startButton.Text = "Start";
-                    actualBPMLabel.Text = "0";
-                    baseToneLabel.Text = "-";
-                    chordLabel.Text = "-";
-                }
-                else
-                {
-                    startAudioAnalysis();
-                    startButton.Image = global::AudioAnalyzer.Properties.Resources.media_stop;
-                    startButton.Text = "Stop";
-                }
-            }
-            else
-            {
-                if (running==false)
-                {
-                    startGenerator();
-                    startButton.Image = global::AudioAnalyzer.Properties.Resources.media_stop;
-                    startButton.Text = "Stop";
-                }
-                else
-                {
-                    stopGenerator();
-                    startButton.Text = "Start";
-                    startButton.Image = global::AudioAnalyzer.Properties.Resources.media_play;
-                    actualBPMLabel.Text = "0";
-                    baseToneLabel.Text = "-";
-                    chordLabel.Text = "-";
-                }
-            }
-		}
-
-        /// <summary>
-        /// selected beat detection mode has changed
-        /// </summary>
-		private void methodBox_SelectedIndexChanged(object sender, EventArgs e)
-		{
-		    algorithm = methodBox.SelectedIndex;
-
-			if (methodBox.SelectedIndex == 0)
-			{
-                sensitivityBar.Visible = true;
-                sensitivityLabel.Visible = true;
-                sensitivityBar.Value = (int)((sensitivity - 3.0) * 50);
-            }
-			else if (methodBox.SelectedIndex==1)
-			{
-                sensitivityBar.Visible = false;
-                sensitivityLabel.Visible = false;
-            }
-			else if (methodBox.SelectedIndex==2)
-			{
-                sensitivityBar.Visible = false;
-                sensitivityLabel.Visible = false;
-            }
-			else if (methodBox.SelectedIndex==3)
-            {
-                sensitivityBar.Visible = true;
-                sensitivityLabel.Visible = true;
-
-                if (autoSensitivity==1)
-                    sensitivityBar.Value = 100;
-                else if (autoSensitivity==2)
-                    sensitivityBar.Value = 75;
-                else if (autoSensitivity==3)
-                    sensitivityBar.Value = 50;
-                else
-                    sensitivityBar.Value = 0;
-
-            }
-
-            resetStatistics();
-            detectMode = methodBox.SelectedIndex;
-			maxBPMBar.Focus();
-		}
-
-
-        /// <summary>
-        /// selected beat detection mode has changed
-        /// </summary>
-        internal void algorithm_changed(int algorithmIndex)
+        private void setDeviceIndex(int index)
         {
-            methodBox_SelectedIndexChanged(this,new EventArgs());
+            if (audioStream != null)
+                stopAudioAnalysis();
+
+            selectedDeviceIndex = (index >= 0 && index < deviceList.Count) ? index : -1;
+
+            inputChannelNames.Clear();
+            selectedInputChannelIndex = -1;
+
+            AbstractSoundSource source = selectedDevice;
+            if (source == null)
+                return;
+
+            AsioSoundSource asio = source as AsioSoundSource;
+            if (asio != null)
+                inputChannelNames.AddRange(asio.getInputNames());
+
+            if (inputChannelNames.Count > 0)
+                setInputChannelIndex(0);
+
+            OnSettingsChanged();
         }
 
-
         /// <summary>
-        /// beat detection sensitivty has changed
+        /// Selects an input channel. Like the old inputsBox handler, changing it stops a
+        /// running recording - the channel is picked when the stream starts.
         /// </summary>
-		private void sensitivityBar_Scroll(object sender, EventArgs e)
-		{
-            sensitivity = 3.0 + ((double)sensitivityBar.Value / 50);
+        private void setInputChannelIndex(int index)
+        {
+            if (audioStream != null)
+                stopAudioAnalysis();
 
-            if (sensitivityBar.Value < 25)
-                autoSensitivity = 4;
-            else if (sensitivityBar.Value < 50)
-                autoSensitivity = 3;
-            else if (sensitivityBar.Value < 75)
-                autoSensitivity = 2;
-            else
-                autoSensitivity = 1;
-		}
+            selectedInputChannelIndex =
+                (index >= 0 && index < inputChannelNames.Count) ? index : -1;
+        }
 
+        private AbstractSoundSource selectedDevice
+        {
+            get
+            {
+                return (selectedDeviceIndex >= 0 && selectedDeviceIndex < deviceList.Count)
+                    ? deviceList[selectedDeviceIndex]
+                    : null;
+            }
+        }
 
         /// <summary>
-        /// number of spectrum channels has changed
+        /// selects the remembered device, falling back to the first entry
         /// </summary>
-		private void subBandBox_SelectedIndexChanged(object sender, EventArgs e)
-		{
-            usedbands = (Convert.ToInt32(subBandBox.SelectedItem));
+        private void selectWantedDevice()
+        {
+            if (deviceList.Count == 0)
+                return;
 
-            OnSendSpectrumCount(usedbands);
+            int idx = 0;
+            if (!String.IsNullOrEmpty(wantedDeviceId))
+            {
+                for (int i = 0; i < deviceList.Count; i++)
+                {
+                    if (String.Equals(deviceList[i].Id, wantedDeviceId))
+                    {
+                        idx = i;
+                        break;
+                    }
+                }
+            }
 
-			startButton.Focus();
-		}
+            if (selectedDeviceIndex != idx)
+                setDeviceIndex(idx);
 
-        #region settings persistence
+            if (wantedInputChannel >= 0 && wantedInputChannel < inputChannelNames.Count)
+                setInputChannelIndex(wantedInputChannel);
+        }
+
+        /// <summary>available audio devices as plain data</summary>
+        internal List<AudioDeviceInfo> getDevices()
+        {
+            var list = new List<AudioDeviceInfo>();
+            foreach (AbstractSoundSource s in deviceList)
+            {
+                list.Add(new AudioDeviceInfo(s.Id, s.ToString()));
+            }
+            return list;
+        }
+
+        /// <summary>input channel names of the selected device, empty for non-ASIO</summary>
+        internal List<string> getInputChannelNames()
+        {
+            return new List<string>(inputChannelNames);
+        }
 
         /// <summary>
-        /// remembers the wanted device and applies it if the list is already filled.
+        /// identifier of the selected device, or the remembered one while the list is empty
+        /// </summary>
+        internal string getSelectedDeviceId()
+        {
+            AbstractSoundSource s = selectedDevice;
+            return s != null ? s.Id : wantedDeviceId;
+        }
+
+        internal int getSelectedInputChannel()
+        {
+            return selectedInputChannelIndex >= 0 ? selectedInputChannelIndex : wantedInputChannel;
+        }
+
+        /// <summary>
+        /// remembers the wanted device and applies it if the list is already filled
         /// </summary>
         internal void setDevice(string deviceId, int inputChannel)
         {
@@ -763,204 +609,354 @@ namespace AudioAnalyzer
             selectWantedDevice();
         }
 
-        /// <summary>
-        /// selects the remembered device, falling back to the first entry. Called from Load
-        /// once the list exists, and from setDevice if it already does.
-        /// </summary>
-        private void selectWantedDevice()
-        {
-            if (devicesBox.Items.Count == 0)
-                return;
+        #endregion
 
-            int idx = 0;
-            if (!String.IsNullOrEmpty(wantedDeviceId))
+        #region Transport
+
+        /// <summary>starts or stops</summary>
+        internal void toggleRun()
+        {
+            if (generatorMode == false)
             {
-                for (int i = 0; i < devicesBox.Items.Count; i++)
+                if (running)
+                    stopAudioAnalysis();
+                else
+                    startAudioAnalysis();
+            }
+            else
+            {
+                if (running == false)
+                    startGenerator();
+                else
+                    stopGenerator();
+            }
+        }
+
+        /// <summary>
+        /// starts the AudioAnalyze
+        /// </summary>
+        private void startAudioAnalysis()
+        {
+            resetStatistics();
+
+            AbstractSoundSource source = selectedDevice;
+            if (source == null) return;
+            audioStream = source;
+
+            AsioSoundSource asio = source as AsioSoundSource;
+            if (asio != null) {
+                asio.InputChannel = selectedInputChannelIndex;
+            }
+
+            // Starts the beat detection
+            draw = 0;
+            if (audioStream.StartRecord()) {
+                audioStream.SamplesAvailable += AudioStream_SamplesAvailable;
+
+                _aggregatorLeft.Reset();
+                _aggregatorRight.Reset();
+                _fftBuffer.Reset();
+                _fftBufferLeft.Reset();
+                _fftBufferRight.Reset();
+
+                starting = true;
+                startTimer.Enabled = true;
+
+                beatTimer.Start();
+
+                running = true;
+            }
+            else
+            {
+                log.Error("Could not start recording on device {0}", source.ToString());
+                audioStream = null;
+            }
+        }
+
+        /// <summary>
+        /// stops the AudioAnalyze
+        /// </summary>
+        internal void stopAudioAnalysis()
+        {
+            if (audioStream != null)
+            {
+                audioStream.StopRecord();
+                audioStream.SamplesAvailable -= AudioStream_SamplesAvailable;
+                beatTimer.Stop();
+                addBeatTimer.Stop();
+
+                audioStream = null;
+
+                running = false;
+
+                level[0] = 0.0F;
+                level[1] = 0.0F;
+                for (int c = 0; c < 2; c++)
                 {
-                    AbstractSoundSource s = devicesBox.Items[i] as AbstractSoundSource;
-                    if (s != null && String.Equals(s.Id, wantedDeviceId))
+                    for (int i = 0; i < 4; i++)
                     {
-                        idx = i;
-                        break;
+                        levelhistory[c, i] = 0.0F;
                     }
+                    peakWait[c] = 0;
+                }
+                OnLevelChanged(level[0], level[1]);
+
+                for (int i = 0; i < usedbands;i++ )
+                {
+                    dbSubLevel[i] = 0.0F;
+                    dbSubLevelLeft[i] = 0.0F;
+                    dbSubLevelRight[i] = 0.0F;
+                }
+                if (stereoSpectrum)
+                {
+                    OnSpectrumChanged(dbSubLevelLeft, ESpectrumChannel.Left);
+                    OnSpectrumChanged(dbSubLevelRight, ESpectrumChannel.Right);
+                }
+                else
+                {
+                    OnSpectrumChanged(dbSubLevel, ESpectrumChannel.Mono);
+                }
+
+                resetStatistics();
+            }
+        }
+
+        /// <summary>
+        /// starts the beatGenerator
+        /// </summary>
+        private void startGenerator()
+        {
+            subBeatTimer.Stop();
+            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+            subbeatCount = 0;
+            running = true;
+            mainBeatTimer_Tick(this, new EventArgs());
+        }
+
+        /// <summary>
+        /// stops the beatGenerator
+        /// </summary>
+        private void stopGenerator()
+        {
+            running = false;
+            mainBeatTimer.Stop();
+            subBeatTimer.Stop();
+        }
+
+        /// <summary>
+        /// changes the mode from analysis to generator (and back)
+        /// </summary>
+        private void changeMode(bool generator)
+        {
+            if (running)
+            {
+                if (generator)
+                {
+                    stopAudioAnalysis();
+                    startGenerator();
+                    generatorMode = true;
+                }
+                else
+                {
+                    stopGenerator();
+                    startAudioAnalysis();
+                    generatorMode = false;
                 }
             }
-
-            // Zuweisung nur bei echter Änderung: der Handler startet eine laufende
-            // Analyse neu, und inputsBox ist bei gleichem Gerät schon gefüllt
-            if (devicesBox.SelectedIndex != idx)
-                devicesBox.SelectedIndex = idx;
-
-            // inputsBox wird von devicesBox_SelectedIndexChanged gefüllt
-            if (wantedInputChannel >= 0 && wantedInputChannel < inputsBox.Items.Count)
-                inputsBox.SelectedIndex = wantedInputChannel;
-        }
-
-        /// <summary>
-        /// identifier of the selected device, or the remembered one while the list is empty
-        /// </summary>
-        internal string getSelectedDeviceId()
-        {
-            AbstractSoundSource s = devicesBox.SelectedItem as AbstractSoundSource;
-            return s != null ? s.Id : wantedDeviceId;
-        }
-
-        internal int getSelectedInputChannel()
-        {
-            return inputsBox.SelectedIndex >= 0 ? inputsBox.SelectedIndex : wantedInputChannel;
-        }
-
-        /// <summary>
-        /// sets the number of spectrum bands and keeps field and combobox in sync.
-        /// Safe to call at any time, the items are filled by the designer.
-        /// </summary>
-        internal void setUsedBands(int bands)
-        {
-            int idx = subBandBox.Items.IndexOf(bands.ToString());
-            if (idx < 0)
+            else
             {
-                // unbekannter Wert, z.B. aus einem beschädigten Projekt
-                idx = subBandBox.Items.IndexOf("32");
+                generatorMode = generator;
             }
-            if (idx < 0)
-                return;
 
-            usedbands = Convert.ToInt32(subBandBox.Items[idx]);
-
-            if (subBandBox.SelectedIndex != idx)
-                subBandBox.SelectedIndex = idx;
-
-            OnSendSpectrumCount(usedbands);
-        }
-
-        /// <summary>
-        /// sets the generator rhythm and keeps field and combobox in sync.
-        /// The items are filled by the constructor.
-        /// </summary>
-        internal void setRhythm(int index)
-        {
-            if (index < 0 || index >= rhythmTypeComboBox.Items.Count)
-                index = 0;
-
-            generatorRhythm = (RhythmType)index;
-
-            if (rhythmTypeComboBox.SelectedIndex != index)
-                rhythmTypeComboBox.SelectedIndex = index;
-        }
-
-        /// <summary>
-        /// Derives all internal fields from the current control values. The restore path
-        /// only assigns the controls, and TrackBar.Scroll is not raised when Value is set
-        /// from code - so those fields have to be pulled over explicitly. Safe to call
-        /// before audioAnalysForm_Load has run.
-        /// </summary>
-        internal void applyControlValues()
-        {
-            // erst die Schalter, dann die Regler, die davon abhängen
-            peakHold = PeakHoldCheckBox.Checked;
-            maxBpmOn = maxBPMCheckBox.Checked;
-            doubleSpeed = doubleCheckBox.Checked;
-            halfSpeed = halfCheckBox.Checked;
-            stereoSpectrum = stereoSpectrumCheckBox.Checked;
-            if (methodBox.SelectedIndex >= 0)
-                algorithm = methodBox.SelectedIndex;
-
-            gainBar_ValueChanged(gainBar, EventArgs.Empty);
-            gainVUBar_ValueChanged(gainVUBar, EventArgs.Empty);
-            gainSpectrumBar_ValueChanged(gainSpectrumBar, EventArgs.Empty);
-            PeakHoldBar_Scroll(PeakHoldBar, EventArgs.Empty);
-            sensitivityBar_Scroll(sensitivityBar, EventArgs.Empty);
-            numberOfBeatsBar_Scroll(numberOfBeatsBar, EventArgs.Empty);
-            maxBPMBar_Scroll(maxBPMBar, EventArgs.Empty);   // braucht maxBpmOn
-
-            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+            OnBpmChanged();
         }
 
         #endregion
 
-		internal void gainBar_ValueChanged(object sender, EventArgs e)
-		{
-            regler1 = 100 * scaleToFactor(gainBar.Value, 0.25, 5.0);
-			
-            //if (gainBar.Value <= 50)
-            //    minVol = 1 + (gainBar.Value - 50) * 2;
-            //else
-            //    minVol = 1 - (50 - b) * 0.01;
+        #region Appy settings
 
-            //Console.WriteLine(minVol);
-
-            //regler2 = scaleToFactor(gainBar.Value, 0.25, 1.75);
-		}
-
-        /// <summary>
-        /// main gain has changed
-        /// </summary>
-        private void gainBar_Scroll(object sender, EventArgs e)
+        private static int clamp(int value, int min, int max)
         {
-            gainBar_ValueChanged(sender, e);
+            return value < min ? min : (value > max ? max : value);
         }
 
-        /// <summary>
-        /// VU gain has changed
-        /// </summary>
-		private void gainVUBar_ValueChanged(object sender, EventArgs e)
-		{
-            if (sender==(object)gainVUBar)
-                reglerVU = scaleToFactor(gainVUBar.Value, 0.5, 8.0);
-		}
-
-        /// <summary>
-        /// VU gain has changed
-        /// </summary>
-        private void gainVUBar_Scroll(object sender, EventArgs e)
+        private void applyMainGain()
         {
-            gainVUBar_ValueChanged(sender, e);
+            regler1 = 100 * scaleToFactor(mainGainValue, 0.25, 5.0);
         }
 
-        /// <summary>
-        /// Spectrum gain has changed
-        /// </summary>
-        private void gainSpectrumBar_Scroll(object sender, EventArgs e)
+        private void applyVuGain()
         {
-            gainSpectrumBar_ValueChanged(sender, e);
+            reglerVU = scaleToFactor(vuGainValue, 0.5, 8.0);
         }
 
-        /// <summary>
-        /// Spectrum gain has changed
-        /// </summary>
-        private void gainSpectrumBar_ValueChanged(object sender, EventArgs e)
+        private void applySpectrumGain()
         {
-            if (sender == (object)gainSpectrumBar)
-                reglerSpectrum = scaleToFactor(gainSpectrumBar.Value, 0.25, 20.0);
+            reglerSpectrum = scaleToFactor(spectrumGainValue, 0.25, 20.0);
         }
 
-        /// <summary>
-        /// maxBPM value has changed
-        /// </summary>
-		private void maxBPMBar_Scroll(object sender, EventArgs e)
-		{
-            if (sender.Equals((object)maxBPMBar))
+        private void applyPeakHoldTime()
+        {
+            peakHoldTime = (float)peakHoldTimeMs / 1000;
+            updatePeakHoldSteps();
+        }
+
+        private void applySensitivity()
+        {
+            sensitivity = 3.0 + ((double)sensitivityValue / 50);
+
+            if (sensitivityValue < 25)
+                autoSensitivity = 4;
+            else if (sensitivityValue < 50)
+                autoSensitivity = 3;
+            else if (sensitivityValue < 75)
+                autoSensitivity = 2;
+            else
+                autoSensitivity = 1;
+        }
+
+        private void applyForecastCount()
+        {
+            if (forecastCountValue < ForecastCountMax)
             {
-                if (maxBpmOn)
+                if (forecastCountValue == 0)
                 {
-                    MaxBPM = maxBPMBar.Value;
+                    if (addBeatTimer != null)
+                        addBeatTimer.Stop();
+                    forecast = false;
                 }
                 else
                 {
-                    MaxBPM = 1000;		// = 60 ms o. maxBPM=1000
+                    forecast = true;
+                    nbForecast = forecastCountValue;
                 }
-                newBPM();
             }
-		}
+            else
+            {
+                forecast = true;
+                nbForecast = 10000000;
+            }
+        }
+
+        private void applyMaxBpm()
+        {
+            if (maxBpmOn)
+            {
+                maxBpmEffective = maxBpmValue;
+            }
+            else
+            {
+                maxBpmEffective = 1000;		// = 60 ms o. maxBPM=1000
+            }
+            newBPM();
+        }
+
+        /// <summary>
+        /// Applies a beat detection algorithm. Replaces methodBox_SelectedIndexChanged,
+        /// including its side effect on the sensitivity: methods 0 and 3 snap the slider
+        /// onto the position matching the value they actually use, the other two ignore it.
+        /// </summary>
+        private void applyAlgorithm(int index)
+        {
+            algorithm = index;
+
+            if (index == 0)
+            {
+                sensitivityValue = clamp((int)((sensitivity - 3.0) * 50), SensitivityMin, SensitivityMax);
+            }
+            else if (index == 3)
+            {
+                if (autoSensitivity == 1)
+                    sensitivityValue = 100;
+                else if (autoSensitivity == 2)
+                    sensitivityValue = 75;
+                else if (autoSensitivity == 3)
+                    sensitivityValue = 50;
+                else
+                    sensitivityValue = 0;
+            }
+
+            resetStatistics();
+            detectMode = index;
+        }
+
+        /// <summary>
+        /// sets the number of spectrum bands, falling back to 32 for an unknown value
+        /// (e.g. out of a damaged project)
+        /// </summary>
+        internal void setUsedBands(int bands)
+        {
+            int idx = Array.IndexOf(bandCounts, bands);
+            if (idx < 0)
+                idx = Array.IndexOf(bandCounts, 32);
+            if (idx < 0)
+                return;
+
+            usedbands = bandCounts[idx];
+
+            OnSpectrumLayoutChanged(usedbands);
+        }
+
+        /// <summary>
+        /// sets the generator rhythm. Like the old combobox handler, a change restarts a
+        /// running generator so the new pattern begins on a beat.
+        /// </summary>
+        internal void setRhythm(int index)
+        {
+            if (index < 0 || index >= rhythmNames.Length)
+                index = 0;
+
+            if ((int)generatorRhythm == index)
+                return;
+
+            generatorRhythm = (RhythmType)index;
+
+            if (generatorMode && running)
+            {
+                startGenerator();
+            }
+        }
+
+        private void applyStereoSpectrum()
+        {
+            _fftBufferLeft?.Reset();
+            _fftBufferRight?.Reset();
+
+            // Nullen ausgeben, solange die R-Quellen noch registriert sind.
+            if (!stereoSpectrum && dbSubLevelRight != null)
+            {
+                for (int i = 0; i < usedbands; i++)
+                {
+                    dbSubLevelRight[i] = 0.0F;
+                }
+                OnSpectrumChanged(dbSubLevelRight, ESpectrumChannel.Right);
+            }
+
+            OnSpectrumLayoutChanged(usedbands);
+        }
+
+        /// <summary>
+        /// Recomputes everything derived from the settings. Every setter does this for its
+        /// own value already, so this is only the safety net at the end of a project restore.
+        /// Idempotent by design.
+        /// </summary>
+        internal void recomputeDerivedValues()
+        {
+            applyMainGain();
+            applyVuGain();
+            applySpectrumGain();
+            applyPeakHoldTime();
+            applySensitivity();
+            applyForecastCount();
+            applyMaxBpm();
+
+            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+        }
 
         /// <summary>
         /// gibt einen Wert zwischen min und max aus basierend auf einem Standard ScrollBar mit 0-100
         /// mit Mittelwert 50 => 1, 0 => min, 100 => max
         /// </summary>
-        /// <param name="value"></param>
-        /// <param name="minValue"></param>
-        /// <param name="maxValue"></param>
-        /// <returns></returns>
         private double scaleToFactor(int value, double minValue, double maxValue)
         {
             double dvalue;
@@ -994,142 +990,24 @@ namespace AudioAnalyzer
         }
 
         /// <summary>
-        /// resize of form
+        /// Turns the hold time into a number of ComputeLevel calls. That method is driven by
+        /// the sample aggregator, so the conversion depends on the sample rate - it has to be
+        /// redone whenever the device changes.
         /// </summary>
-		private void audioAnalysForm_Resize(object sender, EventArgs e)
-		{
-			//this.MinimumSize = new Size(deviceGroup.Width, beatGroup.Height);
-
-			//double ratio = this.Width / this.Height;
-
-            //if (ratio > 1.5 && this.Height<deviceGroup.Height+levelGroup.Height)
-            //{
-            //    // alle Gruppen nebeneinander anordnen
-            //    //levelGroup.Left = deviceGroup.Width;
-            //    //levelGroup.Top = 0;
-            //}
-            //else if (ratio < 0.666 && this.Width < deviceGroup.Width + beatGroup.Width)
-            //{
-            //    // alle Gruppen untereinander anordnen
-            //}
-            //else
-            //{
-            //    // Standard-Anordnung im Viereck
-            //}
-		}
-
-        /// <summary>
-        /// sets the number of automatically send beats
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void numberOfBeatsBar_Scroll(object sender, EventArgs e)
+        private void updatePeakHoldSteps()
         {
-            if (numberOfBeatsBar.Value < numberOfBeatsBar.Maximum)
-            {
-                if (numberOfBeatsBar.Value == 0)
-                {
-                    if (addBeatTimer != null)
-                        addBeatTimer.Stop();
-                    forecast = false;
-                    noOfLabel.Text = "no additional beats";
-                }
-                else
-                {
-                    forecast = true;
-                    nbForecast = numberOfBeatsBar.Value;
-                    noOfLabel.Text = "max. " + numberOfBeatsBar.Value + " additional beats";
-                }
-            }
-            else
-            {
-                forecast = true;
-                nbForecast = 10000000;
-                noOfLabel.Text = "unlimited additional beats";
-            }
+            int steps = (int)Math.Round(peakHoldTime * sampleRate / aggregatorNotificationCount);
+            peakWaitMax = Math.Max(1, steps);
         }
 
-        /// <summary>
-        /// double the speed of the generated beats
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void doubleCheckBox_CheckedChanged(object sender, EventArgs e)
-        {
-            if (doubleCheckBox.Checked)
-            {
-                if (halfCheckBox.Checked)
-                {
-                    halfCheckBox.Checked = false;
-                    halfSpeed = false;
-                }
-                doubleSpeed = true;
+        #endregion
 
-            }
-            else
-            {
-                doubleSpeed = false;
-            }
-        }
+        #region Generator and statistics
 
         /// <summary>
-        /// halfs the speed of the generated beats
+        /// restarts the timer for beat forecast or generator to sync to the music
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void halfCheckBox_CheckedChanged(object sender, EventArgs e)
-        {
-            if (halfCheckBox.Checked)
-            {
-                if (doubleCheckBox.Checked)
-                {
-                    doubleSpeed = false;
-                    doubleCheckBox.Checked = false;
-                }
-                halfSpeed = true;
-            }
-            else
-            {
-                halfSpeed = false;
-            }
-        }
-
-        /// <summary>
-        /// activatec the beat generator
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void activateBeatGeneratorCheckbox_CheckedChanged(object sender, EventArgs e)
-        {
-            changeMode(activateBeatGeneratorCheckbox.Checked);
-        }
-
-        /// <summary>
-        /// changtes the rhytm type
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void rhythmTypeComboBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            //MessageBox.Show("hier 1");
-
-            generatorRhythm = (RhythmType) rhythmTypeComboBox.SelectedIndex;
-            if (generatorMode && running)
-            {
-                startGenerator();
-            }
-
-            //MessageBox.Show("hier 2");
-            drawBeatPicture(0);
-
-        }
-
-        /// <summary>
-        /// restarts the timer for beatforecast or generator to sync to the music
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void syncButton_Click(object sender, EventArgs e)
+        internal void syncGenerator()
         {
             if (generatorMode)
             {
@@ -1151,9 +1029,7 @@ namespace AudioAnalyzer
         /// <summary>
         /// measures the tapped beat
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void tapButton_Click(object sender, EventArgs e)
+        internal void tapBeat()
         {
             double midValue;
             long newValue;
@@ -1176,289 +1052,436 @@ namespace AudioAnalyzer
                 tapValues[0] = newValue - lastTap;
                 lastTap = newValue;
 
-                Console.WriteLine(tapWatch.ElapsedMilliseconds);
-                Console.WriteLine(tapValues[0] + " , " + tapValues[1] + " , " + tapValues[2] + " , " + tapValues[3]);
-
                 tapCount += 1;
                 if (tapCount > 3)
                 {
                     midValue = tapValues.Average();
-                    tapBpm = (int)(60000 / midValue);
+                    tapBpm = clamp((int)(60000 / midValue), GeneratorBpmMin, GeneratorBpmMax);
 
-                    if (tapBpm > beatGeneratorUpDown.Maximum)
-                        tapBpm = (int)beatGeneratorUpDown.Maximum;
-
-                    if (tapBpm < beatGeneratorUpDown.Minimum)
-                        tapBpm = (int)beatGeneratorUpDown.Minimum;
-
-                    beatGeneratorUpDown.Value = (decimal)tapBpm;
+                    GeneratorBpm = tapBpm;
 
                     if (mainBeatTimer.Enabled == false && generatorMode == true)
                     {
-                        startButton_Click(this, new EventArgs());
+                        toggleRun();
                     }
                 }
             }
         }
 
-        /// <summary>
-        /// changes the generated BPM
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void beatGeneratorUpDown_ValueChanged(object sender, EventArgs e)
-        {
-            generatorBPM = (double)beatGeneratorUpDown.Value;
-            actualBPMLabel.Text = beatGeneratorUpDown.Value.ToString();
-
-            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
-        }
-
-        /// <summary>
-        /// resets the statistics and BPM value
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void resetButton_Click(object sender, EventArgs e)
+        internal void resetBeatStatistics()
         {
             resetStatistics();
         }
 
         /// <summary>
-        /// starts the AudioAnalyze
+        /// BPM: the detected tempo, or the generated one while
+        /// the generator is active. 0 while nothing has been detected yet.
         /// </summary>
-        private void startAudioAnalysis()
+        internal int currentBpm
         {
-            resetStatistics();
+            get { return generatorMode ? (int)generatorBPM : baseBeat; }
+        }
 
-            AbstractSoundSource source = (AbstractSoundSource)devicesBox.SelectedItem;
-            if (source == null) return;
-            audioStream = source;
+        /// <summary>
+        /// The sensitivity only has a meaning for the weighted and the automatic method -
+        /// the other two ignore it, and the GUI greys the slider out for them.
+        /// </summary>
+        internal bool sensitivityRelevant
+        {
+            get { return algorithm == 0 || algorithm == 3; }
+        }
 
-            if (source is AsioSoundSource) {
-                ((AsioSoundSource)source).InputChannel = inputsBox.SelectedIndex;
-            }
+        #endregion
 
-            // Starts the beat detection
-            draw = 0;
-            if (audioStream.StartRecord()) {
-                audioStream.SamplesAvailable += AudioStream_SamplesAvailable;
+        #region IAudioAnalyzer
 
-                _aggregatorLeft.Reset();
-                _aggregatorRight.Reset();
-                _fftBuffer.Reset();
-                _fftBufferLeft.Reset();
-                _fftBufferRight.Reset();
 
-                starting = true;
-                startTimer.Enabled = true;
+        public int Bpm
+        {
+            get { return currentBpm; }
+        }
 
-                //updateTimer.Start();
-                beatTimer.Start();
+        public bool IsRunning
+        {
+            get { return running; }
+        }
 
-                running = true;
+        public void ToggleRun()
+        {
+            toggleRun();
+        }
 
-                beatBox.BackColor = beatPassive;
-                startButton.Text = "Stop";
-            }
-            else
+        public IReadOnlyList<AudioDeviceInfo> Devices
+        {
+            get { return getDevices(); }
+        }
+
+        public string SelectedDeviceId
+        {
+            get { return getSelectedDeviceId(); }
+            set { setDevice(value, getSelectedInputChannel()); }
+        }
+
+        public IReadOnlyList<string> InputChannels
+        {
+            get { return getInputChannelNames(); }
+        }
+
+        public int SelectedInputChannel
+        {
+            get { return getSelectedInputChannel(); }
+            set { setDevice(getSelectedDeviceId(), value); }
+        }
+
+        public int MainGain
+        {
+            get { return mainGainValue; }
+            set
             {
-                Console.WriteLine("Could not start recording");
+                int v = clamp(value, GainMin, GainMax);
+                if (mainGainValue == v)
+                    return;
+
+                mainGainValue = v;
+                applyMainGain();
+                OnSettingsChanged();
+            }
+        }
+
+        public IReadOnlyList<int> AvailableBandCounts
+        {
+            get { return Array.AsReadOnly(bandCounts); }
+        }
+
+        public int BandCount
+        {
+            get { return usedbands; }
+            set
+            {
+                if (usedbands == value)
+                    return;
+
+                setUsedBands(value);
+                OnSettingsChanged();
+            }
+        }
+
+        public bool StereoSpectrum
+        {
+            get { return stereoSpectrum; }
+            set
+            {
+                if (stereoSpectrum == value)
+                    return;
+
+                stereoSpectrum = value;
+                applyStereoSpectrum();
+                OnSettingsChanged();
+            }
+        }
+
+        public int SpectrumGain
+        {
+            get { return spectrumGainValue; }
+            set
+            {
+                int v = clamp(value, GainMin, GainMax);
+                if (spectrumGainValue == v)
+                    return;
+
+                spectrumGainValue = v;
+                applySpectrumGain();
+                OnSettingsChanged();
+            }
+        }
+
+        public string GetBandRangeLabel(int bandNumber)
+        {
+            return getBandRangeLabel(bandNumber);
+        }
+
+        public int VuGain
+        {
+            get { return vuGainValue; }
+            set
+            {
+                int v = clamp(value, GainMin, GainMax);
+                if (vuGainValue == v)
+                    return;
+
+                vuGainValue = v;
+                applyVuGain();
+                OnSettingsChanged();
+            }
+        }
+
+        public bool PeakHold
+        {
+            get { return peakHold; }
+            set
+            {
+                if (peakHold == value)
+                    return;
+
+                peakHold = value;
+                OnSettingsChanged();
+            }
+        }
+
+        public int PeakHoldTime
+        {
+            get { return peakHoldTimeMs; }
+            set
+            {
+                int v = clamp(value, PeakHoldTimeMin, PeakHoldTimeMax);
+                if (peakHoldTimeMs == v)
+                    return;
+
+                peakHoldTimeMs = v;
+                applyPeakHoldTime();
+                OnSettingsChanged();
             }
         }
 
         /// <summary>
-        /// stops the AudioAnalyze
+        /// Translated at the boundary, like the rhythms: beatAlgorithmNames stays the English
+        /// msgid source and the selection runs on the index, never on the text.
         /// </summary>
-        internal void stopAudioAnalysis()
+        public IReadOnlyList<string> BeatAlgorithms
         {
-            if (audioStream != null)
+            get { return getBeatAlgorithmNames(); }
+        }
+
+        public int BeatAlgorithm
+        {
+            get { return algorithm; }
+            set
             {
-                audioStream.StopRecord();
-                audioStream.SamplesAvailable -= AudioStream_SamplesAvailable;
-                beatTimer.Stop();
-                addBeatTimer.Stop();
+                if (value < 0 || value >= beatAlgorithmNames.Length)
+                    return;
+                if (algorithm == value)
+                    return;
 
-                audioStream = null;
-
-                running = false;
-
-                beatBox.BackColor = Color.Gray;
-                spectrumPicture.Image = null;
-                levelLBox.Image = null;
-                levelRBox.Image = null;
-
-                level[0] = 0.0F;
-                level[1] = 0.0F;
-                //OnSendLevel(level[0],level[1]);
-
-                for (int i = 0; i < usedbands;i++ )
-                {
-                    dbSubLevel[i] = 0.0F;
-                    dbSubLevelLeft[i] = 0.0F;
-                    dbSubLevelRight[i] = 0.0F;
-                }
-                if (stereoSpectrum)
-                {
-                    OnSendSpectrum(dbSubLevelLeft, ESpectrumChannel.Left);
-                    OnSendSpectrum(dbSubLevelRight, ESpectrumChannel.Right);
-                }
-                else
-                {
-                    OnSendSpectrum(dbSubLevel, ESpectrumChannel.Mono);
-                }
-
-                resetStatistics();
+                applyAlgorithm(value);
+                OnSettingsChanged();
             }
         }
 
-        /// <summary>
-        /// starts the beatGenerator
-        /// </summary>
-        private void startGenerator()
+        public bool SensitivityRelevant
         {
-            subBeatTimer.Stop();
-            computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
-            subbeatCount = 0;
-            drawnBeatsCount = 0;
-            running = true;
-            mainBeatTimer_Tick(this, new EventArgs());
+            get { return sensitivityRelevant; }
         }
 
-        /// <summary>
-        /// stops the beatGenerator
-        /// </summary>
-        private void stopGenerator()
+        public int Sensitivity
         {
-            running = false;
-            mainBeatTimer.Stop();
-            subBeatTimer.Stop();
-        }
+            get { return sensitivityValue; }
+            set
+            {
+                int v = clamp(value, SensitivityMin, SensitivityMax);
+                if (sensitivityValue == v)
+                    return;
 
-        /// <summary>
-        /// changes the mode from analysis to generator (and back)
-        /// </summary>
-        /// <param name="generator"></param>
-        private void changeMode(bool generator)
-        {
-            if (running)
-            {
-                if (generator)
-                {
-                    stopAudioAnalysis();
-                    startGenerator();
-                    generatorMode = true;
-                    actualBPMLabel.Text = beatGeneratorUpDown.Value.ToString();
-                }
-                else
-                {
-                    stopGenerator();
-                    startAudioAnalysis();
-                    generatorMode = false;
-                    actualBPMLabel.Text = Convert.ToString(baseBeat);
-                }
-            }
-            else
-            {
-                if (generator)
-                {
-                    generatorMode = true;
-                    actualBPMLabel.Text = beatGeneratorUpDown.Value.ToString();
-                }
-                else
-                {
-                    generatorMode = false;
-                    actualBPMLabel.Text = Convert.ToString(baseBeat);
-                }
+                sensitivityValue = v;
+                applySensitivity();
+                OnSettingsChanged();
             }
         }
 
-
-        /// <summary>
-        /// switches Max BPM limit on/off
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void maxBPMCheckBox_CheckedChanged(object sender, EventArgs e)
+        public bool MaxBpmLimit
         {
-            if (maxBPMCheckBox.Checked)
+            get { return maxBpmOn; }
+            set
             {
-                maxBpmOn = true;
-                maxBPMBar.Enabled = true;
-            }
-            else
-            {
-                maxBpmOn = false;
-                maxBPMBar.Enabled = false;
+                if (maxBpmOn == value)
+                    return;
+
+                maxBpmOn = value;
+
+                applyMaxBpm();
+                OnSettingsChanged();
             }
         }
 
-        /// <summary>
-        /// zur Ausgabe von Debug-Informationen
-        /// </summary>
-        private void outputDebugInfo()
+        public int MaxBpm
         {
-            //for (int i = 0; i < maxbands; i++)
-            //{
-            //    Console.WriteLine(sublevel[i]);
-            //}
-
-            //foreach (Tone t in maximumsList)
-            //{
-            //    Console.WriteLine("Band: " + t.band + " Freq: " + t.frequency + " Level: " + t.amplitude);
-            //}
-        }
-
-        /// <summary>
-        /// main form is shown
-        /// </summary>
-        private void audioAnalysForm_Shown(object sender, EventArgs e)
-        {
-            setUsedBands(usedbands);
-        }
-
-        /// <summary>
-        /// level PeakHold on/off
-        /// </summary>
-        private void PeakHoldCheckBox_CheckedChanged(object sender, EventArgs e)
-        {
-            if (PeakHoldCheckBox.Checked)
+            get { return maxBpmValue; }
+            set
             {
-                peakHold = true;
-            }
-            else
-            {
-                peakHold = false;
+                int v = clamp(value, MaxBpmMin, MaxBpmMax);
+                if (maxBpmValue == v)
+                    return;
+
+                maxBpmValue = v;
+                applyMaxBpm();
+                OnSettingsChanged();
             }
         }
 
-        private void PeakHoldBar_Scroll(object sender, EventArgs e)
+        public int ForecastCount
         {
-            peakHoldTime = (float)PeakHoldBar.Value / 1000;
-            //MessageBox.Show(peakHoldTime.ToString());
+            get { return forecastCountValue; }
+            set
+            {
+                int v = clamp(value, ForecastCountMin, ForecastCountMax);
+                if (forecastCountValue == v)
+                    return;
+
+                forecastCountValue = v;
+                applyForecastCount();
+                OnSettingsChanged();
+            }
         }
 
-        /// <summary>
-        /// separate spectrum analysis per channel on/off
-        /// </summary>
-        private void stereoSpectrumCheckBox_CheckedChanged(object sender, EventArgs e)
+        public bool DoubleSpeed
         {
-            stereoSpectrum = stereoSpectrumCheckBox.Checked;
-
-            _fftBufferLeft?.Reset();
-            _fftBufferRight?.Reset();
-
-            // Nullen ausgeben, solange die R-Quellen noch registriert sind.
-            if (!stereoSpectrum && dbSubLevelRight != null)
+            get { return doubleSpeed; }
+            set
             {
-                for (int i = 0; i < usedbands; i++)
-                {
-                    dbSubLevelRight[i] = 0.0F;
-                }
-                OnSendSpectrum(dbSubLevelRight, ESpectrumChannel.Right);
-            }
+                if (doubleSpeed == value)
+                    return;
 
-            OnSendSpectrumCount(usedbands);
+                doubleSpeed = value;
+                if (doubleSpeed && halfSpeed)   // schliessen sich gegenseitig aus
+                    halfSpeed = false;
+
+                OnSettingsChanged();
+            }
+        }
+
+        public bool HalfSpeed
+        {
+            get { return halfSpeed; }
+            set
+            {
+                if (halfSpeed == value)
+                    return;
+
+                halfSpeed = value;
+                if (halfSpeed && doubleSpeed)
+                    doubleSpeed = false;
+
+                OnSettingsChanged();
+            }
+        }
+
+        public void ResetBeatStatistics()
+        {
+            resetBeatStatistics();
+        }
+
+        public bool GeneratorEnabled
+        {
+            get { return generatorMode; }
+            set
+            {
+                if (generatorMode == value)
+                    return;
+
+                changeMode(value);
+                OnSettingsChanged();
+            }
+        }
+
+        public int GeneratorBpm
+        {
+            get { return (int)generatorBPM; }
+            set
+            {
+                int v = clamp(value, GeneratorBpmMin, GeneratorBpmMax);
+                if ((int)generatorBPM == v)
+                    return;
+
+                generatorBPM = v;
+
+                OnBpmChanged();
+                OnSettingsChanged();
+
+                computeMainAndSubBeatTimes(generatorBPM, generatorRhythm);
+            }
+        }
+
+        public IReadOnlyList<string> Rhythms
+        {
+            get { return getRhythmNames(); }
+        }
+
+        public int Rhythm
+        {
+            get { return (int)generatorRhythm; }
+            set
+            {
+                if ((int)generatorRhythm == value)
+                    return;
+
+                setRhythm(value);
+                OnSettingsChanged();
+            }
+        }
+
+        public void Sync()
+        {
+            syncGenerator();
+        }
+
+        public void Tap()
+        {
+            tapBeat();
+        }
+
+        #endregion
+
+        #region Translated lists
+
+        /// <summary>names of the beat detection algorithms, in selection order</summary>
+        internal List<string> getBeatAlgorithmNames()
+        {
+            var list = new List<string>();
+            foreach (string name in beatAlgorithmNames)
+            {
+                list.Add(LumosLIB.Tools.I18n.T._(name));
+            }
+            return list;
+        }
+
+        internal List<string> getRhythmNames()
+        {
+            var list = new List<string>();
+            foreach (string name in rhythmNames)
+            {
+                list.Add(LumosLIB.Tools.I18n.T._(name));
+            }
+            return list;
+        }
+
+        #endregion
+
+        public void Dispose()
+        {
+            stopAudioAnalysis();
+            stopGenerator();
+
+            disposeTimer(ref beatTimer);
+            disposeTimer(ref beatclearTimer);
+            disposeTimer(ref startTimer);
+            disposeTimer(ref addBeatTimer);
+            disposeTimer(ref mainBeatTimer);
+            disposeTimer(ref subBeatTimer);
+            disposeTimer(ref tapTimeout);
+
+            if (_aggregatorLeft != null)
+                _aggregatorLeft.MaximumCalculated -= AggregatorLeft_MaximumCalculated;
+            if (_aggregatorRight != null)
+                _aggregatorRight.MaximumCalculated -= AggregatorRight_MaximumCalculated;
+        }
+
+        private static void disposeTimer(ref Timer timer)
+        {
+            if (timer == null)
+                return;
+
+            timer.Stop();
+            timer.Dispose();
+            timer = null;
         }
     }
 }
