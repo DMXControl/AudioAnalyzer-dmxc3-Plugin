@@ -138,12 +138,7 @@ namespace AudioAnalyzer
 
         int beatCount;
         private Stopwatch beatClock;
-        private long actualBeatTime;
-        private long lastBeatTime;
-        private TimeSpan[] beatMemory;
-        private int[] bpmMemory;
-        private int[] bpmDistribution;
-        private int tolBpm = 3;
+        private double[] bpmMemory;
         private int midBpm;
 	    internal bool halfSpeed = false;
 	    internal bool doubleSpeed = false;

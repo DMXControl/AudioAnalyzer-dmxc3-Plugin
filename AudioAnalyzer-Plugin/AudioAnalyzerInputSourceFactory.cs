@@ -23,6 +23,8 @@ namespace AudioAnalyzer
         private readonly List<AASpectrumSource> _spectrumRight = new List<AASpectrumSource>();
         private AAVolumeSource volL, volR;
         private AABeatSource beat;
+        private AABpmSource bpm;
+        private readonly EventHandler<double> _sendBpmDelegate;
 
         public AudioAnalyzerInputSourceFactory(audioAnalysForm form)
         {
@@ -31,6 +33,10 @@ namespace AudioAnalyzer
             _sendBeatDelegate = (s, args)
                 => beat?.IncrementBeat();
             form.SendBeat += _sendBeatDelegate;
+
+            _sendBpmDelegate = (s, value)
+                => bpm?.SetBpm(value);
+            form.SendBpm += _sendBpmDelegate;
 
             _sendLevelDelegate = (s, args)
                 =>
@@ -54,6 +60,9 @@ namespace AudioAnalyzer
                 beat = new AABeatSource();
                 InputManager.getInstance().RegisterSource(beat);
 
+                bpm = new AABpmSource();
+                InputManager.getInstance().RegisterSource(bpm);
+
                 volL = new AAVolumeSource("{384DDEDC-378E-4306-9999-E05632FFF91F}", "Volume L");
                 volR = new AAVolumeSource("{9B3C13BC-9FBF-4b93-A18D-4BEA86616EA8}", "Volume R");
                 InputManager.getInstance().RegisterSource(volL);
@@ -74,6 +83,7 @@ namespace AudioAnalyzer
                 InputManager.getInstance().UnregisterSources(all);
 
                 beat = null;
+                bpm = null;
                 volL = null;
                 volR = null;
                 _spectrum.Clear();
@@ -163,6 +173,7 @@ namespace AudioAnalyzer
             IsDisposed = true;
 
             _form.SendBeat -= _sendBeatDelegate;
+            _form.SendBpm -= _sendBpmDelegate;
             _form.SendLevel -= _sendLevelDelegate;
             _form.SendSpectrum -= UpdateSpectrum;
             _form.SendSpectrumCount -= UpdateSpectrumInputs;

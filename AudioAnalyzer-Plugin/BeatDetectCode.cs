@@ -46,7 +46,7 @@ namespace AudioAnalyzer
             int ubound = FFTFrequency2Index(200);
             for (i = lbound; i <= ubound; i++)
             {
-                highvalue += fft[i];
+                bassvalue += fft[i];
             }
             bassvalue = bassvalue / (ubound - lbound);	// 50 Hz - 200 Hz
 

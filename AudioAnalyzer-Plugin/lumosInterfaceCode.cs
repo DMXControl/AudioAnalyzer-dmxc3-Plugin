@@ -16,6 +16,7 @@ namespace AudioAnalyzer
     {
         internal event EventHandler<BeatEventArgs> SendBeat;
         internal event EventHandler<LevelEventArgs> SendLevel;
+        internal event EventHandler<double> SendBpm;
         internal event EventHandler<SpectrumEventArgs> SendSpectrum;
         internal event EventHandler<SpectrumCountEventArgs> SendSpectrumCount;
 
@@ -23,6 +24,11 @@ namespace AudioAnalyzer
         {
             if (SendBeat != null)
                 SendBeat(this, new BeatEventArgs(majorMinor));
+        }
+
+        private void OnSendBpm(double bpm)
+        {
+            SendBpm?.Invoke(this, bpm);
         }
 
         private void OnSendLevel(float volL, float volR)

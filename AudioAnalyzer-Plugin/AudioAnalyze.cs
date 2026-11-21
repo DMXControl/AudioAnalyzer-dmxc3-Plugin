@@ -225,12 +225,9 @@ namespace AudioAnalyzer
 			// create a List for sorted indices for Beat4()
 			sortedindex = new List<int>(256);
 
-            // create an array for beat memory
-            beatMemory = new TimeSpan[200];
-            bpmMemory = new int[200];
-            bpmDistribution = new int[20];
+            // create an array for the last onset times
+            bpmMemory = new double[64];
             beatClock.Start();
-            actualBeatTime = beatClock.ElapsedMilliseconds;
             analysisHistory = new Queue<historyEntry>();
 
             // initialize for baseTone
@@ -349,6 +346,14 @@ namespace AudioAnalyzer
 		/// <param name="e"></param>
 		void beatTimer_Tick(object sender, EventArgs e)
         {
+            // Keine Onsets mehr (Musik pausiert/Stille): Tempo verwerfen und BPM auf 0 setzen
+            if (beatCount > 0 && beatClock.ElapsedMilliseconds - bpmMemory[0] > BpmTimeoutMs)
+            {
+                resetStatistics();
+                actualBPMLabel.Text = "0";
+                generatedBpmLabel.Text = "0";
+            }
+
             // here we gather info about the stream, when it is playing...
             if (audioStream.Playing)
             {
@@ -475,28 +480,24 @@ namespace AudioAnalyzer
             {
                 if (beatclearTimer.Enabled == false && beat_detected == true && starting == false)
                 {
-                    OnSendBeat(MinorBeat);
+                    // Solange ein Tempo erkannt ist und das Beat-Raster laeuft, werden nicht die
+                    // Roh-Onsets ausgegeben, sondern nur die phasenstarr generierten Beats.
+                    bool tracking = forecast && gridValid && baseBeat > 0;
+
+                    if (!tracking)
+                    {
+                        OnSendBeat(MinorBeat);
+                        beatBox.BackColor = beatActive;
+                        beatclearTimer2.Start();
+                    }
 
                     if (maxBPMCheckBox.Enabled) 
                         beatclearTimer.Start();
-                    beatBox.BackColor = beatActive;
-                    beatclearTimer2.Start();
 
-                    lastBeatTime = actualBeatTime;
-                    actualBeatTime = beatClock.ElapsedMilliseconds;
 
-                    //Console.WriteLine("vorher: " + lastBeatTime);
-                    //Console.WriteLine("jetzt : " + actualBeatTime);
-
-                    doBeatStatisticsSimple(actualBeatTime - lastBeatTime);
-
-                    // Vorhersage aktiv
-                    if (forecast && baseBeat >= 0)
-                    {
-                        addedBeats = 0;
-                        addBeatTimer.Stop();
-                        addBeatTimer.Start();
-                    }
+                    // neuer Onset: Generator darf wieder bis zu nbForecast Beats ausgeben
+                    addedBeats = 0;
+                    doBeatStatisticsSimple();
                 }
             }
             else
@@ -536,27 +537,19 @@ namespace AudioAnalyzer
         /// <param name="e"></param>
         void addBeatTimer_Tick(object sender, EventArgs e)
         {
-            if (addedBeats < nbForecast && forecast && baseBeat > 0)
+            if (addedBeats < nbForecast && forecast && baseBeat > 0 && gridValid)
             {
                 // send beat
                 OnSendBeat(MinorBeat);
 
                 addedBeats += 1;
 
-                if (addedBeats == 1)
-                {
-                    if (doubleCheckBox.Checked)
-                        addBeatTimer.Interval = (int)(30000 / baseBeat);
-                    else if (halfCheckBox.Checked)
-                        addBeatTimer.Interval = (int)(120000 / baseBeat);
-                    else
-                        addBeatTimer.Interval = (int)(60000 / baseBeat);
-                }
-
-                beatclearTimer.Start();
                 beatBox.BackColor = forecastBeatActive;
-
                 beatclearTimer2.Start();
+
+                // naechsten Rasterbeat planen
+                gridRef = gridNext;
+                ScheduleNextGridBeat(beatClock.ElapsedMilliseconds);
             }
             else
             {
