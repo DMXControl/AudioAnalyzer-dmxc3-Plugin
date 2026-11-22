@@ -378,6 +378,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0"
@@ -457,6 +458,13 @@
                                       Content="{T:_ 'Half'}"
                                       IsChecked="{Binding BeatDetection.HalfSpeed}" />
                         </StackPanel>
+
+                        <CheckBox Grid.Row="7"
+                                  Grid.Column="1"
+                                  Margin="0,10,0,0"
+                                  Content="{T:_ 'Favor fast tempo (metal)'}"
+                                  IsChecked="{Binding BeatDetection.FavorFastTempo}"
+                                  ToolTip="{T:_ 'Prefer the faster of two tempi that differ by a factor of two, e.g. for blast beats. May double some tempi around 100 to 125 BPM.'}" />
                     </Grid>
                 </baseControls:LumosExpander>
 

@@ -19,6 +19,7 @@ namespace AudioAnalyzer.Wpf.ViewModels
         private int forecastCount;
         private bool doubleSpeed;
         private bool halfSpeed;
+        private bool favorFastTempo;
         private bool applying;
         private RelayCommand resetCommand;
 
@@ -142,6 +143,18 @@ namespace AudioAnalyzer.Wpf.ViewModels
             }
         }
 
+        public bool FavorFastTempo
+        {
+            get { return favorFastTempo; }
+            set
+            {
+                if (!SetProperty(ref favorFastTempo, value) || applying)
+                    return;
+
+                analyzer.FavorFastTempo = value;
+            }
+        }
+
         public RelayCommand ResetCommand
         {
             get { return resetCommand ?? (resetCommand = new RelayCommand(analyzer.ResetBeatStatistics)); }
@@ -159,6 +172,7 @@ namespace AudioAnalyzer.Wpf.ViewModels
                 SetProperty(ref forecastCount, analyzer.ForecastCount, nameof(ForecastCount));
                 SetProperty(ref doubleSpeed, analyzer.DoubleSpeed, nameof(DoubleSpeed));
                 SetProperty(ref halfSpeed, analyzer.HalfSpeed, nameof(HalfSpeed));
+                SetProperty(ref favorFastTempo, analyzer.FavorFastTempo, nameof(FavorFastTempo));
 
                 InvokePropertyChanged(nameof(SensitivityRelevant));
                 InvokePropertyChanged(nameof(ForecastText));

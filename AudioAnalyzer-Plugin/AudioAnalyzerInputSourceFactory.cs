@@ -5,6 +5,7 @@ using System.Text;
 using AudioAnalyzer.AAEventArgs;
 using AudioAnalyzer.Engine;
 using AudioAnalyzer.Input;
+using Lumos.GUI;
 using Lumos.GUI.Input;
 using Lumos.GUI.Input.v2;
 using org.dmxc.lumos.Kernel.Beat;
@@ -27,6 +28,11 @@ namespace AudioAnalyzer
         private readonly List<AASpectrumSource> _spectrumRight = new List<AASpectrumSource>();
         private AAVolumeSource volL, volR;
         private AABeatSource beat;
+        private AABpmSource bpm;
+        private AAMoodSource moodValue, energy, brightness, key, chord;
+        private AAActiveSink activeSink;
+        private readonly EventHandler _bpmChangedDelegate;
+        private readonly EventHandler _moodChangedDelegate;
 
         public AudioAnalyzerInputSourceFactory(IAudioAnalyzer analyzer)
         {
@@ -47,6 +53,12 @@ namespace AudioAnalyzer
             analyzer.SpectrumChanged += UpdateSpectrum;
 
             analyzer.SpectrumLayoutChanged += UpdateSpectrumInputs;
+
+            _bpmChangedDelegate = (s, args) => bpm?.SetBpm(_analyzer.OutputBpm);
+            analyzer.BpmChanged += _bpmChangedDelegate;
+
+            _moodChangedDelegate = (s, args) => UpdateMood();
+            analyzer.MoodChanged += _moodChangedDelegate;
         }
 
         public async Task CreateInputs()
@@ -57,6 +69,19 @@ namespace AudioAnalyzer
 
                 beat = new AABeatSource();
                 InputManager.getInstance().RegisterSource(beat);
+
+                bpm = new AABpmSource();
+                InputManager.getInstance().RegisterSource(bpm);
+
+                moodValue = new AAMoodSource("{F1905CBA-7D4B-4950-8F18-B3608DF391CC}", "Mood (0 = minor, 1 = major)", 0, 1, 0.5);
+                energy = new AAMoodSource("{3C8C2B9E-E45C-4978-854E-6DD9B5D19EF9}", "Energy", 0, 1, 0);
+                brightness = new AAMoodSource("{59A56A75-25AB-4EEF-A85A-D5B01A17D497}", "Brightness", 0, 1, 0);
+                key = new AAMoodSource("{C1B3EE24-532D-4FA4-94D8-ECED2B811294}", "Key (0 = C ... 11 = B, -1 = none)", -1, 11, -1);
+                chord = new AAMoodSource("{C5DBEE95-3FA4-49FE-8559-AD179ACEE733}", "Chord root (0 = C ... 11 = B, -1 = none)", -1, 11, -1);
+                InputManager.getInstance().RegisterSources(new[] { moodValue, energy, brightness, key, chord });
+
+                activeSink = new AAActiveSink(SetAnalysisActive);
+                InputManager.getInstance().RegisterSink(activeSink);
 
                 volL = new AAVolumeSource("{384DDEDC-378E-4306-9999-E05632FFF91F}", "Volume L");
                 volR = new AAVolumeSource("{9B3C13BC-9FBF-4b93-A18D-4BEA86616EA8}", "Volume R");
@@ -77,12 +102,44 @@ namespace AudioAnalyzer
 
                 InputManager.getInstance().UnregisterSources(all);
 
+                var sinks = InputManager.getInstance().Sinks
+                    .OfType<AAActiveSink>()
+                    .ToList();
+                InputManager.getInstance().UnregisterSinks(sinks);
+
+
                 beat = null;
+                bpm = null;
+                moodValue = energy = brightness = key = chord = null;
+                activeSink = null;
                 volL = null;
                 volR = null;
                 _spectrum.Clear();
                 _spectrumRight.Clear();
             });
+        }
+
+        private void UpdateMood()
+        {
+            MoodInfo m = _analyzer.Mood;
+            moodValue?.SetValue(m.Mood);
+            energy?.SetValue(m.Energy);
+            brightness?.SetValue(m.Brightness);
+            key?.SetValue(m.KeyRoot);
+            chord?.SetValue(m.ChordRoot);
+        }
+
+        /// <summary>
+        /// "Analysis active" sink: arrives on the thread of the input system, the analysis
+        /// timers live on the GUI thread
+        /// </summary>
+        private void SetAnalysisActive(bool active)
+        {
+            var form = WindowManager.getInstance().MainFormWindow;
+            if (form != null && !form.IsDisposed && form.InvokeRequired)
+                form.BeginInvoke(new Action(() => _analyzer.SetRunning(active)));
+            else
+                _analyzer.SetRunning(active);
         }
 
         private void UpdateSpectrumInputs(object sender, SpectrumCountEventArgs args)
@@ -170,6 +227,8 @@ namespace AudioAnalyzer
             _analyzer.LevelChanged -= _sendLevelDelegate;
             _analyzer.SpectrumChanged -= UpdateSpectrum;
             _analyzer.SpectrumLayoutChanged -= UpdateSpectrumInputs;
+            _analyzer.BpmChanged -= _bpmChangedDelegate;
+            _analyzer.MoodChanged -= _moodChangedDelegate;
         }
 
         #endregion

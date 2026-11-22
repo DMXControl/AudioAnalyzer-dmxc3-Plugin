@@ -17,10 +17,6 @@ namespace AudioAnalyzer
             if (maxBpmEffective >= 30 && maxBpmEffective <= 300)
     		    maxBpmValue = (int)maxBpmEffective;
 
-            if (beatclearTimer != null)
-            {
-                beatclearTimer.Interval = (int)(60000 / maxBpmEffective);
-            }
 		}
 
 
@@ -38,7 +34,7 @@ namespace AudioAnalyzer
             int ubound = FFTFrequency2Index(200);
             for (i = lbound; i <= ubound; i++)
             {
-                highvalue += fft[i];
+                bassvalue += fft[i];
             }
             bassvalue = bassvalue / (ubound - lbound);	// 50 Hz - 200 Hz
 

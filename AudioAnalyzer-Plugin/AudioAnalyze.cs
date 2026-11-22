@@ -162,10 +162,6 @@ namespace AudioAnalyzer
             beatTimer.Interval = beatInterval;
             beatTimer.Tick += new EventHandler(beatTimer_Tick);
 
-            beatclearTimer = new Timer();
-            beatclearTimer.Interval = (int)(60000 / maxBpmEffective);
-            beatclearTimer.Tick += new EventHandler(beatclearTimer_Tick);
-
             startTimer = new Timer();
             startTimer.Interval = 1000;
             startTimer.Tick += new EventHandler(startTimer_Tick);
@@ -192,11 +188,8 @@ namespace AudioAnalyzer
 
             // Beat-Statistik
             sortedindex = new List<int>(256);
-            beatMemory = new TimeSpan[200];
-            bpmMemory = new int[200];
-            bpmDistribution = new int[20];
+            bpmMemory = new double[64];
             beatClock.Start();
-            actualBeatTime = beatClock.ElapsedMilliseconds;
             newBPM();
 
             // Aufnahme und FFT
@@ -256,12 +249,18 @@ namespace AudioAnalyzer
         }
 
         private void AudioStream_SamplesAvailable(object sender, float[] samples, int count, int channels, int samplerate) {
+            // The envelope has its own default rate, so it has to be told on every chunk: a device
+            // that runs at the engine default (48 kHz) never takes the branch below.
+            envelope.SetSampleRate(samplerate);
             if (this.sampleRate != samplerate) {
                 this.sampleRate = samplerate;
                 configSubBands();
                 updatePeakHoldSteps();
             }
             float left = 0;
+            int monoCount = 0;
+            if (monoChunk.Length < count)
+                monoChunk = new float[count];
             for (int i = 0; i < count; ++i) {
                 // alles jenseits der ersten beiden Kanäle (z.B. 5.1-Loopback) wird ignoriert
                 int channel = i % channels;
@@ -270,17 +269,22 @@ namespace AudioAnalyzer
                     left = samples[i];
                     if (channels == 1) {
                         // Mono
+                        monoChunk[monoCount++] = samples[i];
                         _fftBuffer.Add(samples[i]);
                         _fftBufferLeft.Add(samples[i]);
                         _fftBufferRight.Add(samples[i]);
                     }
                 } else if (channel == 1) {
                     _aggregatorRight.Add(samples[i]);
+                    monoChunk[monoCount++] = (left * 0.5f) + (samples[i] * 0.5f);
                     _fftBuffer.Add((left * 0.5f) + (samples[i] * 0.5f));
                     _fftBufferLeft.Add(left);
                     _fftBufferRight.Add(samples[i]);
                 }
             }
+
+            lastChunkMs = NowMs;
+            envelope.AddChunk(monoChunk, monoCount, lastChunkMs);
         }
 
         private void AggregatorLeft_MaximumCalculated(object sender, LumosLIB.Tools.FastFourierTransform.MaxSampleEventArgs e) {
@@ -303,27 +307,14 @@ namespace AudioAnalyzer
         #region beat
 
         /// <summary>
-        /// Main timer task, computes the beat every 20 ms, level and spectrum every 60 ms.
+        /// Main timer task: one analysis step per tick (nominal 20 ms).
         /// </summary>
         void beatTimer_Tick(object sender, EventArgs e)
         {
             // here we gather info about the stream, when it is playing...
             if (audioStream.Playing)
             {
-                // the stream is still playing...
-                computeSubbands();
-
-                // compute Beat
-                ComputeBeat();
-
-                if (draw == 0)
-                {
-                    sendLevel();
-                    sendSpectrum();
-                }
-                draw++;
-                if (draw >= 3)
-                    draw = 0;
+                analysisTick();
             }
             else
             {
@@ -331,6 +322,36 @@ namespace AudioAnalyzer
                 beatTimer.Stop();
                 return;
             }
+        }
+
+        /// <summary>
+        /// One analysis step: spectrum, onsets, tempo, mood, level, output. Separate from the
+        /// timer so a test harness can run it on recorded audio.
+        /// </summary>
+        internal void analysisTick()
+        {
+            // A device may deliver nothing at all while it is silent (WASAPI loopback). Then no
+            // new level arrives either, so the meters would freeze on their last value.
+            if (NowMs - lastChunkMs > NoDataMs)
+            {
+                ComputeLevel(0f, 0);
+                ComputeLevel(0f, 1);
+            }
+
+            computeSubbands();
+
+            // compute Beat (raw onsets)
+            ComputeBeat();
+
+            // tempo from the onset envelope
+            updateTempo();
+
+            // mood (key, chord, energy, ...)
+            updateMood();
+
+            // level and spectrum on every tick
+            sendLevel();
+            sendSpectrum();
         }
 
 
@@ -420,24 +441,21 @@ namespace AudioAnalyzer
             // Beat entdeckt !
             if (algorithm <= 3)  //TODO: change to 2 and add automatic to the new advanced algorithm
             {
-                if (beatclearTimer.Enabled == false && beat_detected == true && starting == false)
+                // minimum distance of two onsets: 60000 / MaxBPM
+                long now = NowMs;
+                if (beat_detected && now - lastOnsetMs >= 60000 / maxBpmEffective && starting == false)
                 {
-                    OnBeatDetected(MinorBeat, EBeatSource.Detected);
+                    lastOnsetMs = now;
 
-                    beatclearTimer.Start();
+                    // While a tempo is known and the beat grid runs, only the grid beats are
+                    // sent, not the raw onsets (eighths and off-beats).
+                    bool tracking = forecast && gridValid && baseBeat > 0;
+                    if (!tracking)
+                        OnBeatDetected(MinorBeat, EBeatSource.Detected);
 
-                    lastBeatTime = actualBeatTime;
-                    actualBeatTime = beatClock.ElapsedMilliseconds;
-
-                    doBeatStatisticsSimple(actualBeatTime - lastBeatTime);
-
-                    // Vorhersage aktiv
-                    if (forecast && baseBeat >= 0)
-                    {
-                        addedBeats = 0;
-                        addBeatTimer.Stop();
-                        addBeatTimer.Start();
-                    }
+                    // a new onset lets the generator send up to nbForecast beats again
+                    addedBeats = 0;
+                    RecordOnset();
                 }
             }
             else
@@ -447,37 +465,21 @@ namespace AudioAnalyzer
         }
 
         /// <summary>
-        /// resets beat_detected
-        /// </summary>
-        void beatclearTimer_Tick(object sender, EventArgs e)
-        {
-            beatclearTimer.Stop();
-            beat_detected = false;
-        }
-
-        /// <summary>
-        /// sends an artificial beat signal
+        /// sends the next beat of the grid
         /// </summary>
         void addBeatTimer_Tick(object sender, EventArgs e)
         {
-            if (addedBeats < nbForecast && forecast && baseBeat > 0)
+            if (addedBeats < nbForecast && forecast && baseBeat > 0 && gridValid)
             {
                 // send beat
                 OnBeatDetected(MinorBeat, EBeatSource.Predicted);
 
                 addedBeats += 1;
 
-                if (addedBeats == 1)
-                {
-                    if (doubleSpeed)
-                        addBeatTimer.Interval = (int)(30000 / baseBeat);
-                    else if (halfSpeed)
-                        addBeatTimer.Interval = (int)(120000 / baseBeat);
-                    else
-                        addBeatTimer.Interval = (int)(60000 / baseBeat);
-                }
-
-                beatclearTimer.Start();
+                // plan the next grid beat
+                lastGridBeat = gridNext;
+                gridRef = gridNext;
+                ScheduleNextGridBeat(NowMs);
             }
             else
             {
@@ -638,6 +640,8 @@ namespace AudioAnalyzer
         private void startAudioAnalysis()
         {
             resetStatistics();
+            envelope.ResetLevels();
+            resetMood();
 
             AbstractSoundSource source = selectedDevice;
             if (source == null) return;
@@ -649,7 +653,6 @@ namespace AudioAnalyzer
             }
 
             // Starts the beat detection
-            draw = 0;
             if (audioStream.StartRecord()) {
                 audioStream.SamplesAvailable += AudioStream_SamplesAvailable;
 
@@ -718,6 +721,7 @@ namespace AudioAnalyzer
                 }
 
                 resetStatistics();
+                resetMood();
             }
         }
 
@@ -877,7 +881,6 @@ namespace AudioAnalyzer
             }
 
             resetStatistics();
-            detectMode = index;
         }
 
         /// <summary>
@@ -1104,6 +1107,21 @@ namespace AudioAnalyzer
         public bool IsRunning
         {
             get { return running; }
+        }
+
+        public double OutputBpm
+        {
+            get { return outputBpm; }
+        }
+
+        public void SetRunning(bool run)
+        {
+            // the beat generator has its own start / stop, the analysis stays out of it
+            if (generatorMode)
+                return;
+
+            if (running != run)
+                toggleRun();
         }
 
         public void ToggleRun()
@@ -1364,6 +1382,20 @@ namespace AudioAnalyzer
             }
         }
 
+        public bool FavorFastTempo
+        {
+            get { return favorFastTempo; }
+            set
+            {
+                if (favorFastTempo == value)
+                    return;
+
+                favorFastTempo = value;
+                tempoEstimator.Reset();   // the old tempogram was built under the other rule
+                OnSettingsChanged();
+            }
+        }
+
         public void ResetBeatStatistics()
         {
             resetBeatStatistics();
@@ -1461,8 +1493,7 @@ namespace AudioAnalyzer
             stopGenerator();
 
             disposeTimer(ref beatTimer);
-            disposeTimer(ref beatclearTimer);
-            disposeTimer(ref startTimer);
+                        disposeTimer(ref startTimer);
             disposeTimer(ref addBeatTimer);
             disposeTimer(ref mainBeatTimer);
             disposeTimer(ref subBeatTimer);

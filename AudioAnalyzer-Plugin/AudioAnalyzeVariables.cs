@@ -69,7 +69,6 @@ namespace AudioAnalyzer
         internal double reglerSpectrum = 1;	// for Spectrum (0,5 - 3)
 		private int beatInterval = 20; // 20ms
 		private Timer beatTimer = null;
-		private Timer beatclearTimer = null;
 		private Timer startTimer = null;
 //        private Timer infoTimer = null;
 //		private string[] inputs;
@@ -98,7 +97,6 @@ namespace AudioAnalyzer
 	    internal bool maxBpmOn = true;
  
 		// for Method Beat1()
-        private int detectMode = 0;
 		private double sensitivity = 4;
 		private double regler1 = 100;	// for Beat1()
 		private double regler2 = 1;		// for Beat3(), Beat4() 
@@ -106,8 +104,6 @@ namespace AudioAnalyzer
 		private int correction = 3;	// correction between HiHat & Bass-Level
 		private int faktor = 6;
         private double minVol = 1.0E-11;
-
-        private int draw = 0;
 
 		private double b;
 		private double avg1 = 1;
@@ -160,15 +156,19 @@ namespace AudioAnalyzer
 
         int beatCount;
         private Stopwatch beatClock;
-        private long actualBeatTime;
-        private long lastBeatTime;
-        private TimeSpan[] beatMemory;
-        private int[] bpmMemory;
-        private int[] bpmDistribution;
-        private int tolBpm = 3;
+
+        /// <summary>clock of the analysis in ms; a test harness can replace it to run faster than real time</summary>
+        internal Func<long> TimeSource;
+        private long NowMs => TimeSource != null ? TimeSource() : beatClock.ElapsedMilliseconds;
+        private long lastOnsetMs = long.MinValue / 2;   // for the minimum distance between two onsets
+        private double[] bpmMemory;
         private int midBpm;
+
+        private readonly MoodAnalyzer mood = new MoodAnalyzer();
+        private long lastMoodTime;
 	    internal bool halfSpeed = false;
 	    internal bool doubleSpeed = false;
+        internal bool favorFastTempo = false;
 
         # endregion statistics
 

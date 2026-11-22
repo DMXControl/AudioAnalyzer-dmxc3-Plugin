@@ -129,6 +129,7 @@ namespace AudioAnalyzer
             c.setValue("ForecastCount", engine.ForecastCount);
             c.setValue("DoubleSpeed", engine.DoubleSpeed);
             c.setValue("HalfSpeed", engine.HalfSpeed);
+            c.setValue("FavorFastTempo", engine.FavorFastTempo);
             m.AddChild(c);
 
             c = new ManagedTreeItem("Generator");
@@ -257,6 +258,11 @@ namespace AudioAnalyzer
                 if (i.hasValue<bool>("HalfSpeed"))
                 {
                     engine.HalfSpeed = i.getValue<bool>("HalfSpeed");
+                }
+
+                if (i.hasValue<bool>("FavorFastTempo"))
+                {
+                    engine.FavorFastTempo = i.getValue<bool>("FavorFastTempo");
                 }
             }
 

@@ -19,6 +19,9 @@ namespace AudioAnalyzer.Engine
         event EventHandler<SpectrumCountEventArgs> SpectrumLayoutChanged;
 
         event EventHandler BpmChanged;
+
+        /// <summary>new mood values are available (raised on every analysis step)</summary>
+        event EventHandler MoodChanged;
         event EventHandler RunningChanged;
 
         /// <summary>a setting was changed elsewhere - re-read what you display</summary>
@@ -29,11 +32,20 @@ namespace AudioAnalyzer.Engine
 
         bool IsRunning { get; }
 
+        /// <summary>tempo as sent to DMXControl: half / double speed applied, 0 while unknown</summary>
+        double OutputBpm { get; }
+
+        /// <summary>key, chord, mood, energy and brightness of the music</summary>
+        MoodInfo Mood { get; }
+
         #endregion
 
         #region Transport
 
         void ToggleRun();
+
+        /// <summary>starts or stops the analysis; does nothing if it is in that state already</summary>
+        void SetRunning(bool run);
 
         #endregion
 
@@ -113,6 +125,12 @@ namespace AudioAnalyzer.Engine
         bool DoubleSpeed { get; set; }
 
         bool HalfSpeed { get; set; }
+
+        /// <summary>
+        /// prefer the faster of two tempi that differ by a factor of two (metal, blast beats).
+        /// Off: tempi near 120 BPM are preferred, fast music is often shown at half speed.
+        /// </summary>
+        bool FavorFastTempo { get; set; }
 
         void ResetBeatStatistics();
 

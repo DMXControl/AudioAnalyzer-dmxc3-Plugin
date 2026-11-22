@@ -13,19 +13,8 @@ namespace AudioAnalyzer
         /// </summary>
         internal void configSubBands()
         {
-            bool wasActive = false;
-
             // startBand indiziert tones/subbands, nicht fft: E2 bis Eb10 ergibt
             // startBand + maxbands == tones.Length
-
-            if (beatclearTimer != null)
-            {
-                if (beatclearTimer.Enabled == true)
-                {
-                    wasActive = true;
-                    beatclearTimer.Enabled = false;
-                }
-            }
 
             subenergy = new double[maxbands];
             subenergybuffer = new double[historylength, maxbands];
@@ -64,14 +53,6 @@ namespace AudioAnalyzer
             for (int i = 0; i < maxbands; i++)
             {
                 subenergy[i] = minsubenergy;
-            }
-
-            if (beatclearTimer != null)
-            {
-                if (wasActive == true)
-                {
-                    beatclearTimer.Enabled = true;
-                }
             }
         }
 

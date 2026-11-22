@@ -20,6 +20,9 @@ namespace AudioAnalyzer
         /// </summary>
         public event EventHandler BpmChanged;
 
+        /// <summary>Raised on every analysis step with new mood values.</summary>
+        public event EventHandler MoodChanged;
+
         /// <summary>
         /// Raised when a setting was changed somewhere else, so a second surface can follow.
         /// </summary>
@@ -62,6 +65,12 @@ namespace AudioAnalyzer
         {
             if (BpmChanged != null)
                 BpmChanged(this, EventArgs.Empty);
+        }
+
+        internal void OnMoodChanged()
+        {
+            if (MoodChanged != null)
+                MoodChanged(this, EventArgs.Empty);
         }
 
         internal void OnSettingsChanged()
